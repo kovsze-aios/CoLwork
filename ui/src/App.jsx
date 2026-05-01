@@ -4,6 +4,9 @@ import { ChevronUp, ChevronDown } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ToastProvider } from "./components/Toast";
+import OnboardingModal from "./components/OnboardingModal";
 import Dashboard from "./views/Dashboard";
 import JobHunter from "./views/JobHunter";
 import ResearchLab from "./views/ResearchLab";
@@ -18,6 +21,8 @@ export default function App() {
   const [activeExpert, setActiveExpert] = useState(null);
   const [termOpen, setTermOpen] = useState(false);
   const [termHeight] = useState(280);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [setupChecked, setSetupChecked] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!ipc) return;
@@ -26,6 +31,24 @@ export default function App() {
       setHealth(h);
     } catch { /* offline */ }
   }, []);
+
+  // First-boot onboarding check
+  useEffect(() => {
+    if (!ipc || setupChecked) return;
+    ipc.engine.getSetupStatus().then((s) => {
+      setSetupChecked(true);
+      if (s?.ok && !s.configured?.n8n && !s.configured?.deepseek) {
+        setShowOnboarding(true);
+      }
+    }).catch(() => {});
+  }, [setupChecked]);
+
+  const onOnboardingDone = () => {
+    setShowOnboarding(false);
+    refresh();
+    // Re-check setup for the Dashboard
+    setSetupChecked(false);
+  };
 
   useEffect(() => {
     refresh();
@@ -69,64 +92,70 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
-      <TitleBar />
+    <ToastProvider>
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+        <TitleBar />
 
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar active={view} setActive={setView} />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar active={view} setActive={setView} />
 
-        <div className="flex-1 flex flex-col overflow-hidden stage-spotlight">
-          <main className="flex-1 overflow-y-auto">
-            <AnimatePresence mode="wait">
+          <div className="flex-1 flex flex-col overflow-hidden stage-spotlight">
+            <main className="flex-1 overflow-y-auto">
+              <ErrorBoundary>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={view}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    className="h-full"
+                  >
+                    {renderView()}
+                  </motion.div>
+                </AnimatePresence>
+              </ErrorBoundary>
+            </main>
+
+            {/* Bottom-docked terminal panel — VS-Code / Claude-Code style */}
+            {view !== "terminal" && (
               <motion.div
-                key={view}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                className="h-full"
+                initial={false}
+                animate={{ height: termOpen ? termHeight : 36 }}
+                transition={{ type: "spring", stiffness: 320, damping: 36 }}
+                className="shrink-0 border-t border-zinc-800 surface-glass-strong overflow-hidden"
               >
-                {renderView()}
+                <button
+                  onClick={() => setTermOpen((v) => !v)}
+                  className="h-9 w-full flex items-center justify-between px-3 text-[11px] font-mono uppercase tracking-wider text-zinc-500 hover:text-white hover:bg-zinc-900/40 transition"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${termOpen ? "bg-linkedin-light animate-pulse-glow" : "bg-zinc-600"}`} />
+                    Terminal
+                    <span className="text-zinc-700">·</span>
+                    <span className="text-zinc-600">Ctrl + `&nbsp;&nbsp;or&nbsp;&nbsp;Ctrl + K</span>
+                  </span>
+                  {termOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </button>
+                {termOpen && (
+                  <div className="h-[calc(100%-2.25rem)] p-2">
+                    <TerminalView embedded />
+                  </div>
+                )}
               </motion.div>
-            </AnimatePresence>
-          </main>
-
-          {/* Bottom-docked terminal panel — VS-Code / Claude-Code style */}
-          {view !== "terminal" && (
-            <motion.div
-              initial={false}
-              animate={{ height: termOpen ? termHeight : 36 }}
-              transition={{ type: "spring", stiffness: 320, damping: 36 }}
-              className="shrink-0 border-t border-zinc-800 surface-glass-strong overflow-hidden"
-            >
-              <button
-                onClick={() => setTermOpen((v) => !v)}
-                className="h-9 w-full flex items-center justify-between px-3 text-[11px] font-mono uppercase tracking-wider text-zinc-500 hover:text-white hover:bg-zinc-900/40 transition"
-              >
-                <span className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${termOpen ? "bg-linkedin-light animate-pulse-glow" : "bg-zinc-600"}`} />
-                  Terminal
-                  <span className="text-zinc-700">·</span>
-                  <span className="text-zinc-600">Ctrl + `&nbsp;&nbsp;or&nbsp;&nbsp;Ctrl + K</span>
-                </span>
-                {termOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-              </button>
-              {termOpen && (
-                <div className="h-[calc(100%-2.25rem)] p-2">
-                  <TerminalView embedded />
-                </div>
-              )}
-            </motion.div>
-          )}
+            )}
+          </div>
         </div>
+
+        <StatusBar
+          activeExpert={activeExpert}
+          n8n={health?.n8n}
+          usage={health?.usage}
+        />
       </div>
 
-      <StatusBar
-        activeExpert={activeExpert}
-        n8n={health?.n8n}
-        usage={health?.usage}
-      />
-    </div>
+      {showOnboarding && <OnboardingModal onDone={onOnboardingDone} />}
+    </ToastProvider>
   );
 }
 

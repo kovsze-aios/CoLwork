@@ -250,7 +250,7 @@ ipcMain.handle("engine.health", async () => {
     memory: { totalActions: (memory.actions || []).length },
     recentActivity: recent,
     usage,
-    version: "8.3.0",
+    version: "9.0.0",
     board: { active: 6 },
   };
 });
@@ -396,10 +396,79 @@ ipcMain.handle("engine.generateVideoScript", async (_e, { topic, lengthSec }) =>
 
 // ── App lifecycle ────────────────────────────────────────────────────────────
 
+// ── Auto-updater (GitHub OTA) ─────────────────────────────────────────────
+
+let updater = null;
+try {
+  const { autoUpdater } = require("electron-updater");
+  updater = autoUpdater;
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = true;
+  updater.logger = console;
+
+  updater.on("checking-for-update", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.checking");
+    }
+  });
+  updater.on("update-available", (info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.available", info);
+    }
+  });
+  updater.on("update-not-available", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.not-available");
+    }
+  });
+  updater.on("download-progress", (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.download-progress", progress);
+    }
+  });
+  updater.on("update-downloaded", (info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.downloaded", info);
+    }
+  });
+  updater.on("error", (err) => {
+    console.warn("[colwork] updater error:", err.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update.error", { message: err.message });
+    }
+  });
+} catch (e) {
+  console.warn("[colwork] electron-updater unavailable:", e.message);
+}
+
+ipcMain.handle("update.check", async () => {
+  if (!updater) return { ok: false, error: "electron-updater not loaded" };
+  try {
+    const result = await updater.checkForUpdates();
+    return { ok: true, ...(result?.updateInfo || {}) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("update.install", () => {
+  if (!updater) return { ok: false, error: "electron-updater not loaded" };
+  updater.quitAndInstall();
+  return { ok: true };
+});
+
+// ── App lifecycle ────────────────────────────────────────────────────────────
+
 app.whenReady().then(() => {
   // Seed .env from .env.example on first boot if missing
   autoInitEnv();
   createWindow();
+
+  // Schedule OTA check 4s after boot (let the window paint first)
+  if (updater && !isDev) {
+    setTimeout(() => updater.checkForUpdatesAndNotify().catch(() => {}), 4000);
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

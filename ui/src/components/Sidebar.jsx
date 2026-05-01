@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Briefcase,
@@ -7,9 +7,14 @@ import {
   Terminal,
   Settings,
   Github,
+  Coffee,
+  ArrowDownToLine,
+  Loader2,
 } from "lucide-react";
 import { LogoMark } from "./Logo";
 import { cn } from "../lib/cn";
+
+const ipc = typeof window !== "undefined" ? window.colwork : null;
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "System health & telemetry" },
@@ -20,6 +25,47 @@ const NAV = [
 ];
 
 export function Sidebar({ active, setActive }) {
+  const [updateState, setUpdateState] = useState("idle"); // idle | checking | available | downloading | downloaded
+  const [updateProgress, setUpdateProgress] = useState(0);
+
+  useEffect(() => {
+    if (!ipc?.updater) return;
+    const cleanups = [
+      ipc.updater.onChecking(() => setUpdateState("checking")),
+      ipc.updater.onAvailable(() => setUpdateState("available")),
+      ipc.updater.onNotAvailable(() => setUpdateState("idle")),
+      ipc.updater.onProgress((p) => {
+        setUpdateState("downloading");
+        setUpdateProgress(p.percent || 0);
+      }),
+      ipc.updater.onDownloaded(() => setUpdateState("downloaded")),
+      ipc.updater.onError(() => setUpdateState("idle")),
+    ];
+    return () => cleanups.forEach((c) => c?.());
+  }, []);
+
+  const handleGithubClick = () => {
+    if (updateState === "downloaded") {
+      ipc?.updater.install();
+    } else {
+      ipc?.engine.openExternal("https://github.com/kovsze-aios/Colwork");
+    }
+  };
+
+  const handleCoffeeClick = () => {
+    ipc?.engine.openExternal("https://buycoffee.to/sportnotes.ai");
+  };
+
+  const updateTooltip = () => {
+    switch (updateState) {
+      case "checking": return "Checking for updates…";
+      case "available": return "Update available — downloading…";
+      case "downloading": return `Downloading ${Math.round(updateProgress)}%`;
+      case "downloaded": return "Restart & Install update";
+      default: return "GitHub";
+    }
+  };
+
   return (
     <aside className="w-16 shrink-0 surface-glass border-r border-zinc-800/70 flex flex-col items-center py-3 relative z-10">
       <div className="mb-4">
@@ -60,13 +106,45 @@ export function Sidebar({ active, setActive }) {
       </nav>
 
       <div className="mt-auto flex flex-col gap-1.5 w-full px-2">
+        {/* GitHub / OTA updater button */}
         <button
-          onClick={() => window.colwork?.engine.openExternal("https://github.com/yourname/colwork")}
-          title="GitHub"
-          className="h-11 w-full grid place-items-center rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800/40 transition"
+          onClick={handleGithubClick}
+          title={updateTooltip()}
+          className={cn(
+            "h-11 w-full grid place-items-center rounded-lg transition relative",
+            updateState === "downloaded"
+              ? "text-green-400 bg-green-500/10 ring-1 ring-green-500/40 animate-pulse-glow"
+              : updateState === "downloading"
+              ? "text-linkedin-light bg-linkedin/10"
+              : updateState === "available" || updateState === "checking"
+              ? "text-linkedin-light"
+              : "text-zinc-500 hover:text-white hover:bg-zinc-800/40",
+          )}
         >
-          <Github size={18} strokeWidth={1.7} />
+          {updateState === "downloading" ? (
+            <>
+              <Loader2 size={18} strokeWidth={1.7} className="animate-spin" />
+              <span className="absolute -bottom-0.5 text-[8px] font-mono text-linkedin-light">
+                {Math.round(updateProgress)}%
+              </span>
+            </>
+          ) : updateState === "downloaded" ? (
+            <ArrowDownToLine size={18} strokeWidth={1.7} />
+          ) : (
+            <Github size={18} strokeWidth={1.7} />
+          )}
         </button>
+
+        {/* Buy Me a Coffee */}
+        <button
+          onClick={handleCoffeeClick}
+          title="Buy Me a Coffee"
+          className="h-11 w-full grid place-items-center rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition"
+        >
+          <Coffee size={18} strokeWidth={1.7} />
+        </button>
+
+        {/* Settings */}
         <button
           onClick={() => setActive("settings")}
           title="Settings"

@@ -48,6 +48,18 @@ contextBridge.exposeInMainWorld("colwork", {
     },
   },
 
+  // ── OTA Updater ─────────────────────────────────────────
+  updater: {
+    check: () => ipcRenderer.invoke("update.check"),
+    install: () => ipcRenderer.invoke("update.install"),
+    onChecking: (h) => { const l = () => h(); ipcRenderer.on("update.checking", l); return () => ipcRenderer.removeListener("update.checking", l); },
+    onAvailable: (h) => { const l = (_e, i) => h(i); ipcRenderer.on("update.available", l); return () => ipcRenderer.removeListener("update.available", l); },
+    onNotAvailable: (h) => { const l = () => h(); ipcRenderer.on("update.not-available", l); return () => ipcRenderer.removeListener("update.not-available", l); },
+    onProgress: (h) => { const l = (_e, p) => h(p); ipcRenderer.on("update.download-progress", l); return () => ipcRenderer.removeListener("update.download-progress", l); },
+    onDownloaded: (h) => { const l = (_e, i) => h(i); ipcRenderer.on("update.downloaded", l); return () => ipcRenderer.removeListener("update.downloaded", l); },
+    onError: (h) => { const l = (_e, e) => h(e); ipcRenderer.on("update.error", l); return () => ipcRenderer.removeListener("update.error", l); },
+  },
+
   // Build/runtime info
   meta: {
     platform: process.platform,

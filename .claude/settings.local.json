@@ -34,7 +34,11 @@
       "Bash(node -e \"require\\('@xterm/addon-fit'\\); console.log\\('@xterm/addon-fit: OK'\\)\")",
       "Bash(node --check \"C:/Users/kowsz/AI_Ecosystem/colwork/electron/main.js\")",
       "Bash(node --check \"C:/Users/kowsz/AI_Ecosystem/colwork/electron/preload.js\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(grep -E \"cookies|memory\\\\.json|\\\\.env$\")",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)"
     ]
   }
 }

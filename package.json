@@ -1,12 +1,12 @@
 {
   "name": "colwork",
-  "version": "8.3.0",
+  "version": "9.0.0",
   "description": "CoLwork — The Open-Source Autonomous Career Engine. Mixture-of-Experts AI agents + RAG Research Lab + n8n Cloud orchestration in a native desktop app.",
   "main": "electron/main.js",
-  "homepage": "https://github.com/yourname/colwork",
+  "homepage": "https://github.com/kovsze-aios/Colwork",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourname/colwork.git"
+    "url": "https://github.com/kovsze-aios/Colwork.git"
   },
   "bin": {
     "colwork": "./index.js"
@@ -19,9 +19,10 @@
     "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm run ui:dev\" \"wait-on http://localhost:3000 && npm run electron:dev\"",
     "icons:build": "node build/build-icons.js",
     "build:ui": "npm run ui:build",
-    "build:desktop": "npm run icons:build && npm run build:ui && electron-builder --win --x64",
-    "build:desktop:portable": "npm run icons:build && npm run build:ui && electron-builder --win --x64 -c.win.target=portable",
+    "build:desktop": "npm run icons:build && npm run build:ui && npm run rebuild && electron-builder --win --x64",
+    "build:desktop:portable": "npm run icons:build && npm run build:ui && npm run rebuild && electron-builder --win --x64 -c.win.target=portable",
     "build:all": "npm run icons:build && npm run build:ui && electron-builder -mwl",
+    "rebuild": "electron-builder install-app-deps",
     "n8n:deploy": "node src/scripts/deploy_n8n_workflows.js"
   },
   "keywords": [
@@ -70,6 +71,7 @@
     "cross-env": "^7.0.3",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^0.468.0",
     "png-to-ico": "^2.1.8",
     "react": "^19.2.5",
@@ -85,6 +87,11 @@
     "productName": "CoLwork",
     "copyright": "Copyright © 2026 Dawid Kowszewicz — MIT License",
     "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "kovsze-aios",
+      "repo": "Colwork"
+    },
     "directories": {
       "output": "dist-desktop",
       "buildResources": "build"
