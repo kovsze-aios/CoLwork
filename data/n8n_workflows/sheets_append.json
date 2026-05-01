@@ -1,0 +1,203 @@
+{
+  "name": "Colwork — Sheets Append Bridge",
+  "nodes": [
+    {
+      "id": "sticky-header",
+      "name": "📌 Architecture Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 80],
+      "parameters": {
+        "width": 760,
+        "height": 220,
+        "color": 6,
+        "content": "## 📊 Colwork — Sheets Append Bridge\n\n**Trigger:** `POST /webhook/colwork/sheets-append`\n\n**Pipeline (zero LLM, free tier):**\n1. Webhook accepts the flat row payload from Colwork\n2. Validate + normalize the 7-column schema\n3. Append to Google Sheet via the official node (must connect credential once in editor)\n4. Respond with `{ ok, rowsAppended }`\n\n**Inputs:** `{ sheetId, columns[], row[], record{} }`\n**Output:** `{ ok, sheetId, rowsAppended, record }`\n\n**One-time setup:** open the `📊 Append → Google Sheet` node in editor → connect Google account → select the spreadsheet by ID."
+      }
+    },
+    {
+      "id": "sticky-cost",
+      "name": "💰 Cost Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [880, 80],
+      "parameters": {
+        "width": 360,
+        "height": 220,
+        "color": 4,
+        "content": "## 💰 Cost Engineering\n\n- **0 LLM calls** — pure data routing\n- Free Google Sheets API quota (300 writes/min/project)\n- All transformations in free Set/Code nodes\n\nEst. cost per run: **$0.00**"
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "▶ Webhook — Sheets Append",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 420],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "colwork/sheets-append",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-validate",
+      "name": "🛡 Validate + Shape Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 420],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst expected = ['Data','Imię i Nazwisko','Firma','Profil URL','Ostatni Post','Icebreaker AI','Sentiment Score'];\n\nconst record = body.record || {};\nconst rowArr = Array.isArray(body.row) ? body.row : expected.map(c => record[c] ?? '');\nconst sheetId = body.sheetId || $env.GOOGLE_SHEET_ID || '';\n\n// Defensive whitespace clean\nconst clean = (v) => {\n  if (v === null || v === undefined) return '';\n  if (typeof v === 'number') return v;\n  return String(v)\n    .replace(/[\\u200B-\\u200D\\uFEFF\\u00A0]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n};\n\nconst shaped = {};\nexpected.forEach((col, i) => { shaped[col] = clean(rowArr[i]); });\n\n// Skip empty rows\nconst hasIdentity = shaped['Imię i Nazwisko'] || shaped['Firma'] || shaped['Profil URL'];\nif (!hasIdentity) {\n  return [{ json: { skip: true, reason: 'empty-row', record: shaped, sheetId } }];\n}\n\nreturn [{ json: { skip: false, sheetId, record: shaped, columns: expected } }];"
+      }
+    },
+    {
+      "id": "if-skip",
+      "name": "🔀 Skip Empty?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 420],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": "={{ true }}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-skip-response",
+      "name": "∅ Skip Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 320],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "ok", "value": "={{ false }}", "type": "boolean" },
+            { "id": "2", "name": "skipped", "value": "={{ true }}", "type": "boolean" },
+            { "id": "3", "name": "reason", "value": "empty-row", "type": "string" },
+            { "id": "4", "name": "rowsAppended", "value": "={{ 0 }}", "type": "number" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "sheets-append",
+      "name": "📊 Append → Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 520],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $json.record['Data'] }}",
+            "Imię i Nazwisko": "={{ $json.record['Imię i Nazwisko'] }}",
+            "Firma": "={{ $json.record['Firma'] }}",
+            "Profil URL": "={{ $json.record['Profil URL'] }}",
+            "Ostatni Post": "={{ $json.record['Ostatni Post'] }}",
+            "Icebreaker AI": "={{ $json.record['Icebreaker AI'] }}",
+            "Sentiment Score": "={{ $json.record['Sentiment Score'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "Data", "displayName": "Data", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Imię i Nazwisko", "displayName": "Imię i Nazwisko", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Firma", "displayName": "Firma", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Profil URL", "displayName": "Profil URL", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Ostatni Post", "displayName": "Ostatni Post", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Icebreaker AI", "displayName": "Icebreaker AI", "type": "string", "required": false, "canBeUsedToMatch": true },
+            { "id": "Sentiment Score", "displayName": "Sentiment Score", "type": "number", "required": false, "canBeUsedToMatch": true }
+          ]
+        },
+        "options": { "useAppend": true }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "set-append-response",
+      "name": "📦 Build Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 520],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "ok", "value": "={{ !$json.error }}", "type": "boolean" },
+            { "id": "2", "name": "rowsAppended", "value": "={{ $json.error ? 0 : 1 }}", "type": "number" },
+            { "id": "3", "name": "sheetId", "value": "={{ $('🛡 Validate + Shape Row').item.json.sheetId }}", "type": "string" },
+            { "id": "4", "name": "record", "value": "={{ $('🛡 Validate + Shape Row').item.json.record }}", "type": "object" },
+            { "id": "5", "name": "error", "value": "={{ $json.error?.message || null }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-webhook",
+      "name": "✅ Respond → Colwork",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1380, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      }
+    }
+  ],
+  "connections": {
+    "▶ Webhook — Sheets Append": {
+      "main": [[{ "node": "🛡 Validate + Shape Row", "type": "main", "index": 0 }]]
+    },
+    "🛡 Validate + Shape Row": {
+      "main": [[{ "node": "🔀 Skip Empty?", "type": "main", "index": 0 }]]
+    },
+    "🔀 Skip Empty?": {
+      "main": [
+        [{ "node": "∅ Skip Payload", "type": "main", "index": 0 }],
+        [{ "node": "📊 Append → Google Sheet", "type": "main", "index": 0 }]
+      ]
+    },
+    "∅ Skip Payload": {
+      "main": [[{ "node": "✅ Respond → Colwork", "type": "main", "index": 0 }]]
+    },
+    "📊 Append → Google Sheet": {
+      "main": [[{ "node": "📦 Build Response", "type": "main", "index": 0 }]]
+    },
+    "📦 Build Response": {
+      "main": [[{ "node": "✅ Respond → Colwork", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Warsaw",
+    "saveExecutionProgress": false,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 30,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

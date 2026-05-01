@@ -1,7 +1,8 @@
 "use strict";
 
-const { createSession, randomDelay } = require("../browser");
+const { browserManager, randomDelay } = require("../browser");
 const { generatePost } = require("../ai");
+const { safe } = require("../utils/retry");
 
 const TOPICS = [
   "Jak automatyzacja procesów biznesowych uwalnia 15h tygodniowo właściciela e-commerce",
@@ -14,91 +15,76 @@ const TOPICS = [
   "E-commerce 2026: nie konkurujesz produktem, tylko szybkością procesów",
 ];
 
-/**
- * Generate and publish a professional LinkedIn post.
- * @param {Object} opts
- * @param {string} [opts.topic] - Custom topic (auto-picked if omitted)
- * @param {string} [opts.tone] - "inspirational" | "technical" | "thought-leadership"
- * @param {boolean} [opts.dryRun] - If true, generate but don't publish
- * @returns {Promise<{topic: string, post: string, published: boolean}>}
- */
 async function createAndPublishPost({ topic, tone, dryRun = false } = {}) {
   const selectedTopic = topic || TOPICS[Math.floor(Math.random() * TOPICS.length)];
 
-  console.log(`[content] Topic: "${selectedTopic}"`);
-  console.log("[content] Generating post with DeepSeek...");
-
-  const post = await generatePost({
-    topic: selectedTopic,
-    tone: tone || "thought-leadership",
-    length: "medium",
-  });
-
-  console.log("[content] Post generated:");
-  console.log("─".repeat(50));
-  console.log(post);
-  console.log("─".repeat(50));
-
-  if (dryRun) {
-    console.log("[content] DRY RUN — post NOT published.");
-    return { topic: selectedTopic, post, published: false };
+  let post;
+  try {
+    post = await generatePost({ topic: selectedTopic, tone: tone || "thought-leadership", length: "medium" });
+  } catch (e) {
+    console.error(`[content] AI generation failed: ${e.message}`);
+    return { topic: selectedTopic, post: "", published: false, error: e.message };
   }
 
-  console.log("[content] Publishing to LinkedIn...");
-  const { page, browser } = await createSession();
+  if (dryRun) return { topic: selectedTopic, post, published: false };
 
+  let page;
   try {
-    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "networkidle", timeout: 30000 });
+    page = await browserManager.start();
+  } catch (e) {
+    console.error(`[content] browser failed: ${e.message}`);
+    return { topic: selectedTopic, post, published: false, error: "browser_failed" };
+  }
+
+  let published = false;
+  try {
+    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
     await randomDelay(2000, 4000);
 
-    // Click the "Start a post" / share box
     const shareBox = page.locator('button:has-text("Start a post"), button:has-text("Share"), div[role="textbox"]').first();
-    await shareBox.click();
-    await randomDelay(1000, 2000);
-
-    // Type into the post editor
-    const editor = page.locator('div[role="textbox"], div.ql-editor, div[contenteditable="true"]').first();
-
-    if (await editor.count() > 0) {
-      await editor.click();
-      await randomDelay(500, 1000);
-
-      // Split into paragraphs and type each
-      const paragraphs = post.split("\n");
-      for (let i = 0; i < paragraphs.length; i++) {
-        const para = paragraphs[i].trim();
-        if (!para) {
-          await page.keyboard.press("Enter");
-          continue;
-        }
-        await page.keyboard.type(para, { delay: 20 + Math.random() * 30 });
-        if (i < paragraphs.length - 1) {
-          await page.keyboard.press("Enter");
-          if (paragraphs[i + 1]?.trim()) {
-            await page.keyboard.press("Enter");
-          }
-        }
-        await randomDelay(100, 300);
-      }
-
-      await randomDelay(1500, 2500);
-
-      // Click Post button
-      const postBtn = page.locator('button:has-text("Post"), button:has-text("Opublikuj")').last();
-      if (await postBtn.count() > 0) {
-        await postBtn.click();
-        await randomDelay(3000, 5000);
-        console.log("[content] Post published successfully.");
-      }
-    } else {
-      console.log("[content] ⚠️  Post editor not found — posting skipped.");
+    if (!(await shareBox.count())) {
+      console.warn("[content] share box not found — skipping publish");
+      return { topic: selectedTopic, post, published: false, error: "share_box_not_found" };
     }
+    await shareBox.click({ timeout: 5000 });
+    await randomDelay(900, 1800);
+
+    const editor = page.locator('div[role="textbox"], div.ql-editor, div[contenteditable="true"]').first();
+    if (!(await editor.count())) {
+      console.warn("[content] editor not found — skipping publish");
+      return { topic: selectedTopic, post, published: false, error: "editor_not_found" };
+    }
+
+    await editor.click();
+    await randomDelay(400, 900);
+
+    const paragraphs = post.split("\n");
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i].trim();
+      if (!para) { await page.keyboard.press("Enter"); continue; }
+      await page.keyboard.type(para, { delay: 18 + Math.random() * 28 });
+      if (i < paragraphs.length - 1) {
+        await page.keyboard.press("Enter");
+        if (paragraphs[i + 1]?.trim()) await page.keyboard.press("Enter");
+      }
+      await randomDelay(80, 220);
+    }
+    await randomDelay(1300, 2200);
+
+    const postBtn = page.locator('button:has-text("Post"), button:has-text("Opublikuj")').last();
+    if (await postBtn.count()) {
+      await postBtn.click({ timeout: 5000 });
+      await randomDelay(2500, 4500);
+      published = true;
+      console.log("[content] ✓ post published");
+    }
+  } catch (e) {
+    console.error(`[content] publish error: ${e.message?.slice(0, 120)}`);
   } finally {
-    await browser.close();
-    console.log("[content] Browser closed.");
+    await safe(() => browserManager.stop(), null, "browser.stop");
   }
 
-  return { topic: selectedTopic, post, published: true };
+  return { topic: selectedTopic, post, published };
 }
 
 module.exports = { createAndPublishPost, TOPICS };

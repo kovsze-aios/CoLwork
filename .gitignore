@@ -1,4 +1,41 @@
-node_modules/
+# ─── secrets & runtime state ────────────────────────────────
 .env
+.env.*
+!.env.example
 data/cookies.json
+data/memory.json
+data/publications/
+data/nauka/
+data/resume.md
 data/.gitkeep
+
+# ─── dependencies ───────────────────────────────────────────
+node_modules/
+ui/node_modules/
+
+# ─── build output ───────────────────────────────────────────
+ui/dist/
+dist/
+dist-desktop/
+build/output/
+*.log
+npm-debug.log*
+
+# ─── editor / OS ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── electron native rebuild artifacts ──────────────────────
+prebuilds/
+*.node
+
+# ─── test artifacts ─────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── claude / agent caches (project-local memory) ───────────
+.claude/projects/

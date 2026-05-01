@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-linkedin: #0A66C2;
+  --color-linkedin-light: #3b8ed7;
+  --color-linkedin-dark: #084e96;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #09090b;
+  color: #e4e4e7;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { scrollbar-width: thin; scrollbar-color: #27272a #09090b; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(10, 102, 194, 0.3); }
+  50%      { box-shadow: 0 0 16px rgba(10, 102, 194, 0.7); }
+}
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* Glass surfaces — used by Sidebar, StatusBar, modal-style overlays.
+   Layered on top of the zinc-950 base so backdrop-filter has something to bite. */
+.surface-glass {
+  background: rgba(24, 24, 27, 0.55);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.surface-glass-strong {
+  background: rgba(9, 9, 11, 0.72);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+
+/* Soft radial spotlight behind the main stage so the dark theme breathes */
+.stage-spotlight {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(10, 102, 194, 0.10), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(10, 102, 194, 0.05), transparent 60%),
+    #09090b;
+}
+
+/* xterm.js — keep terminal background transparent so the dark surface shows through */
+.xterm .xterm-screen { outline: none !important; }
+.xterm-viewport { background: transparent !important; }
+
+::selection { background: rgba(10, 102, 194, 0.3); color: #fff; }
+
+/* Anything interactive cancels the frameless drag region */
+button, input, textarea, select, a, .xterm { -webkit-app-region: no-drag; }

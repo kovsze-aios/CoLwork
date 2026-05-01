@@ -1,7 +1,11 @@
 "use strict";
 
-const { createSession, randomDelay } = require("../browser");
+const path = require("path");
+const fs = require("fs");
+const { browserManager, randomDelay } = require("../browser");
 const { analyzeJobFit, generateFormAnswer } = require("../ai");
+const { safe } = require("../utils/retry");
+const { clean } = require("../utils/clean");
 
 const SEARCH_QUERIES = [
   "Prompt Engineer",
@@ -12,240 +16,176 @@ const SEARCH_QUERIES = [
 ];
 
 const MIN_SCORE_TO_APPLY = 65;
+const SKIPPED_LOG = path.resolve(__dirname, "..", "..", "data", "skipped_jobs.log");
 
-/**
- * Search LinkedIn Jobs and optionally auto-apply to matching positions.
- * @param {Object} opts
- * @param {string[]} [opts.queries] - Search queries
- * @param {number} [opts.maxResults] - Max jobs to evaluate per query
- * @param {boolean} [opts.autoApply] - If true, auto-apply to high-score matches
- * @returns {Promise<Array<{title: string, company: string, score: number, applied: boolean}>>}
- */
+function logSkipped(reason, ctx) {
+  try {
+    fs.mkdirSync(path.dirname(SKIPPED_LOG), { recursive: true });
+    fs.appendFileSync(SKIPPED_LOG, `${new Date().toISOString()}\t${reason}\t${JSON.stringify(ctx).slice(0, 400)}\n`);
+  } catch { /* never crash on logging */ }
+}
+
 async function searchAndApply({ queries, maxResults = 10, autoApply = false } = {}) {
-  const searchQueries = queries || SEARCH_QUERIES;
+  const searchQueries = queries?.length ? queries : SEARCH_QUERIES;
   const results = [];
+  let page;
 
-  console.log("[jobs] Launching browser...");
-  const { page, browser } = await createSession();
+  try {
+    page = await browserManager.start();
+  } catch (e) {
+    logSkipped("browser_start_failed", { error: e.message });
+    return [];
+  }
 
   try {
     for (const q of searchQueries) {
-      console.log(`[jobs] Searching: "${q}"`);
-      const encoded = encodeURIComponent(q);
-      await page.goto(
-        `https://www.linkedin.com/jobs/search/?keywords=${encoded}&location=Poland&f_TPR=r604800`,
-        { waitUntil: "networkidle", timeout: 30000 }
-      );
-      await randomDelay(3000, 5000);
+      const navOk = await safe(async () => {
+        await page.goto(
+          `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=Poland&f_TPR=r604800`,
+          { waitUntil: "domcontentloaded", timeout: 30000 }
+        );
+        return true;
+      }, false, "jobs.nav");
+      if (!navOk) { logSkipped("nav_failed", { query: q }); continue; }
 
-      for (let i = 0; i < 3; i++) {
-        await page.keyboard.press("End");
-        await randomDelay(1000, 2000);
-      }
+      await randomDelay(2500, 4500);
+      await safe(async () => {
+        for (let i = 0; i < 3; i++) {
+          await page.keyboard.press("End");
+          await randomDelay(800, 1700);
+        }
+      }, null, "jobs.scroll");
 
       const jobCards = page.locator("li.jobs-search-results__list-item, div.job-card-container");
-
-      const count = Math.min(await jobCards.count(), maxResults);
-      console.log(`[jobs] Found ~${count} listings. Evaluating...`);
+      const count = Math.min(await safe(() => jobCards.count(), 0, "jobs.count"), maxResults);
+      console.log(`[jobs] "${q}" → ${count} listings`);
 
       for (let i = 0; i < count; i++) {
         const card = jobCards.nth(i);
         try {
-          await card.click();
-          await randomDelay(1500, 3000);
+          await safe(() => card.click({ timeout: 5000 }), null, "jobs.click");
+          await randomDelay(1300, 2500);
 
-          const title = await page.locator("h1.job-details-jobs-unified-top-card__job-title, h2.t-24").first().textContent().catch(() => "");
+          const title = clean(await safe(() => page.locator("h1.job-details-jobs-unified-top-card__job-title, h2.t-24").first().textContent(), "", "jobs.title"), { oneLine: true, max: 150 });
+          const company = clean(await safe(() => page.locator("a.job-details-jobs-unified-top-card__company-name, span.job-details-jobs-unified-top-card__company-name").first().textContent(), "", "jobs.company"), { oneLine: true, max: 80 });
+          const description = clean(await safe(() => page.locator("div.jobs-description__content, div.job-view-layout").first().textContent(), "", "jobs.desc"), { max: 1200 });
 
-          const company = await page.locator("a.job-details-jobs-unified-top-card__company-name, span.job-details-jobs-unified-top-card__company-name").first().textContent().catch(() => "Unknown");
+          if (!title || !description) { logSkipped("empty_listing", { query: q, idx: i }); continue; }
 
-          const description = await page.locator("div.jobs-description__content, div.job-view-layout").first().textContent().catch(() => "");
-
-          if (!title.trim() || !description.trim()) {
+          let analysis;
+          try {
+            analysis = await analyzeJobFit({ title, description, company });
+          } catch (e) {
+            logSkipped("ai_analysis_failed", { query: q, title, error: e.message?.slice(0, 120) });
             continue;
           }
 
-          console.log(`[jobs]   Analyzing: ${title.trim()} @ ${company.trim()}`);
-
-          const analysis = await analyzeJobFit({
-            title: title.trim(),
-            description: description.trim(),
-            company: company.trim(),
-          });
-
-          console.log(`[jobs]   Score: ${analysis.score}/100`);
-
           let applied = false;
           if (autoApply && analysis.score >= MIN_SCORE_TO_APPLY) {
-            console.log(`[jobs]   ✅ High match! Attempting to apply...`);
-            applied = await attemptApply(page, {
-              jobTitle: title.trim(),
-              company: company.trim(),
+            applied = await attemptApply(page, { jobTitle: title, company }).catch((e) => {
+              logSkipped("apply_error", { title, error: e.message?.slice(0, 120) });
+              return false;
             });
-            console.log(`[jobs]   Applied: ${applied}`);
           }
 
-          results.push({
-            title: title.trim(),
-            company: company.trim(),
-            score: analysis.score,
-            reasoning: analysis.reasoning,
-            coverLetter: analysis.coverLetter,
-            applied,
-          });
-
-          await randomDelay(1000, 2500);
+          results.push({ title, company, score: analysis.score, reasoning: analysis.reasoning, coverLetter: analysis.coverLetter, applied });
+          console.log(`[jobs] ${analysis.score}/100 ${title} @ ${company}${applied ? " ✓ applied" : ""}`);
+          await randomDelay(900, 2200);
         } catch (e) {
-          console.error(`[jobs]   Error processing card ${i}: ${e.message}`);
+          logSkipped("card_error", { query: q, idx: i, error: e.message?.slice(0, 120) });
+          console.warn(`[jobs] card ${i} skipped — ${e.message?.slice(0, 80)}`);
         }
       }
     }
   } finally {
-    await browser.close();
-    console.log("[jobs] Browser closed.");
+    await safe(() => browserManager.stop(), null, "browser.stop");
   }
 
   results.sort((a, b) => b.score - a.score);
   return results;
 }
 
-// ── Level 2: Dynamic form answer engine ──────────────────────────────────────
-
-/**
- * Attempt to complete Easy Apply including dynamic text questions.
- * Detects custom text fields, sends questions to DeepSeek, fills answers.
- */
 async function attemptApply(page, { jobTitle, company }) {
-  try {
-    const applyBtn = page.locator('button:has-text("Easy Apply"), button:has-text("Aplikuj"), button:has-text("Apply")').first();
-    if (await applyBtn.count() === 0) {
-      console.log("[jobs]     No apply button found. Skipping.");
-      return false;
+  const applyBtn = page.locator('button:has-text("Easy Apply"), button:has-text("Aplikuj"), button:has-text("Apply")').first();
+  if (!(await applyBtn.count())) return false;
+
+  await applyBtn.click({ timeout: 5000 });
+  await randomDelay(1300, 2500);
+
+  for (let step = 0; step < 8; step++) {
+    const handled = await handleFormQuestions(page, jobTitle, company).catch(() => false);
+    if (handled) { await randomDelay(900, 1700); continue; }
+
+    const submitBtn = page.locator('button:has-text("Submit"), button:has-text("Wyślij"), button:has-text("Submit application")').first();
+    if (await submitBtn.count()) {
+      await submitBtn.click({ timeout: 5000 });
+      await randomDelay(1800, 3500);
+      return true;
     }
 
-    await applyBtn.click();
-    await randomDelay(1500, 3000);
-
-    for (let step = 0; step < 8; step++) {
-      // ── Dynamic form question detection ──────────────────────────────────
-      const handled = await handleFormQuestions(page, jobTitle, company);
-      if (handled) {
-        await randomDelay(1000, 2000);
-        continue; // questions were answered, try moving to next step
-      }
-
-      const nextBtn = page.locator('button:has-text("Next"), button:has-text("Dalej"), button:has-text("Review"), button:has-text("Przejrzyj")').first();
-      const submitBtn = page.locator('button:has-text("Submit"), button:has-text("Wyślij"), button:has-text("Submit application")').first();
-
-      if (await submitBtn.count() > 0) {
-        await submitBtn.click();
-        await randomDelay(2000, 4000);
-        console.log("[jobs]     Application submitted.");
-        return true;
-      }
-
-      if (await nextBtn.count() > 0) {
-        await nextBtn.click();
-        await randomDelay(1000, 2500);
-        continue;
-      }
-
-      break;
+    const nextBtn = page.locator('button:has-text("Next"), button:has-text("Dalej"), button:has-text("Review"), button:has-text("Przejrzyj")').first();
+    if (await nextBtn.count()) {
+      await nextBtn.click({ timeout: 5000 });
+      await randomDelay(900, 2000);
+      continue;
     }
-
-    const dismissBtn = page.locator('button[aria-label="Dismiss"], button:has-text("Dismiss"), button:has-text("Anuluj")').first();
-    if (await dismissBtn.count() > 0) {
-      await dismissBtn.click();
-      await randomDelay(500, 1000);
-    }
-
-    return false;
-  } catch (e) {
-    console.error(`[jobs]     Apply error: ${e.message}`);
-    return false;
+    break;
   }
+
+  const dismissBtn = page.locator('button[aria-label="Dismiss"], button:has-text("Anuluj")').first();
+  if (await dismissBtn.count()) {
+    await dismissBtn.click({ timeout: 3000 }).catch(() => {});
+  }
+  return false;
 }
 
-/**
- * Scan the current Easy Apply modal for custom text questions,
- * generate AI answers, and fill them in.
- */
 async function handleFormQuestions(page, jobTitle, company) {
   let handled = false;
 
-  // Look for text inputs and textareas
   const textInputs = page.locator(
     'input[type="text"]:not([aria-label*="name"]):not([aria-label*="email"]):not([aria-label*="phone"]), textarea:not([aria-label*="message"])'
   );
+  const inputCount = await safe(() => textInputs.count(), 0, "form.count");
 
-  const inputCount = await textInputs.count();
   for (let i = 0; i < inputCount; i++) {
     const input = textInputs.nth(i);
-    const isVisible = await input.isVisible().catch(() => false);
-    if (!isVisible) continue;
-
+    if (!(await input.isVisible().catch(() => false))) continue;
     const value = await input.inputValue().catch(() => "");
-    if (value.trim()) continue; // already filled
+    if (value.trim()) continue;
 
-    // Find the associated label/question
-    let questionText = "";
-
-    // Try aria-labelledby
+    let q = "";
     const labelledBy = await input.getAttribute("aria-labelledby").catch(() => "");
-    if (labelledBy) {
-      questionText = await page.locator(`#${labelledBy}`).textContent().catch(() => "");
-    }
-
-    // Try parent label
-    if (!questionText) {
-      const parentLabel = input.locator("..").locator("label, span.form-label, legend").first();
-      questionText = await parentLabel.textContent().catch(() => "");
-    }
-
-    // Try preceding sibling
-    if (!questionText) {
-      questionText = await input.locator("..").locator("..").locator("label, span.t-14, h3").first().textContent().catch(() => "");
-    }
-
-    if (!questionText || questionText.length < 3) continue;
-
-    console.log(`[jobs]     📝 Dynamic question: "${questionText.slice(0, 100)}..."`);
+    if (labelledBy) q = await page.locator(`#${labelledBy}`).textContent().catch(() => "");
+    if (!q) q = await input.locator("..").locator("label, span.form-label, legend").first().textContent().catch(() => "");
+    if (!q) q = await input.locator("..").locator("..").locator("label, span.t-14, h3").first().textContent().catch(() => "");
+    q = clean(q, { oneLine: true, max: 240 });
+    if (q.length < 3) continue;
 
     try {
-      const answer = await generateFormAnswer({
-        question: questionText.trim(),
-        jobTitle,
-        company,
-      });
-
-      console.log(`[jobs]     🤖 AI answer (${answer.length} chars)`);
-      await input.click();
-      await randomDelay(200, 500);
+      const answer = await generateFormAnswer({ question: q, jobTitle, company });
+      await input.click({ timeout: 3000 });
       await input.fill(answer);
-      await randomDelay(300, 800);
       handled = true;
+      await randomDelay(300, 700);
     } catch (e) {
-      console.error(`[jobs]     ❌ Failed to answer question: ${e.message}`);
+      logSkipped("form_answer_failed", { question: q.slice(0, 60), error: e.message?.slice(0, 80) });
     }
   }
 
-  // Also check for radio / select questions
   const selects = page.locator("select:not([hidden])");
-  const selectCount = await selects.count();
+  const selectCount = await safe(() => selects.count(), 0, "form.selects");
   for (let i = 0; i < selectCount; i++) {
     const select = selects.nth(i);
-    const isVisible = await select.isVisible().catch(() => false);
-    if (!isVisible) continue;
-
+    if (!(await select.isVisible().catch(() => false))) continue;
     const currentVal = await select.inputValue().catch(() => "");
-    if (currentVal && currentVal !== "Select an option" && currentVal !== "Wybierz") continue;
+    if (currentVal && !["Select an option", "Wybierz", ""].includes(currentVal)) continue;
 
-    // Pick the first real option (skip placeholder)
     const options = select.locator("option");
-    const optCount = await options.count();
+    const optCount = await safe(() => options.count(), 0, "form.options");
     for (let j = 0; j < optCount; j++) {
       const optVal = await options.nth(j).getAttribute("value").catch(() => "");
-      if (optVal && optVal !== "Select an option" && optVal !== "Wybierz" && optVal !== "") {
-        await select.selectOption(optVal);
+      if (optVal && !["Select an option", "Wybierz", ""].includes(optVal)) {
+        await select.selectOption(optVal).catch(() => {});
         handled = true;
         break;
       }

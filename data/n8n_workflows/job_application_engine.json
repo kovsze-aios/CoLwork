@@ -1,0 +1,301 @@
+{
+  "name": "Colwork — Job Application Engine",
+  "nodes": [
+    {
+      "id": "sticky-header",
+      "name": "📌 Architecture Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 80],
+      "parameters": {
+        "width": 760,
+        "height": 220,
+        "color": 6,
+        "content": "## 🚀 Colwork — Job Application Engine\n\n**Trigger:** `POST /webhook/colwork/job-application`\n\n**Pipeline (cost-optimized — 1 LLM call total):**\n1. Normalize incoming payload\n2. Free scrape of company About page (HTTP + lightweight HTML strip)\n3. **Single DeepSeek call** generates CV + cover letter + email subject in one JSON\n4. Build recruiter email draft (subject, body, attachments-ready)\n5. Respond with full package\n\n**Inputs:** `{ jobTitle, company, jobDescription, companyUrl?, resumeMd?, recruiterEmail? }`\n**Outputs:** `{ cv, coverLetter, emailDraft, companyContext }`"
+      }
+    },
+    {
+      "id": "sticky-cost",
+      "name": "💰 Cost Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [880, 80],
+      "parameters": {
+        "width": 360,
+        "height": 220,
+        "color": 4,
+        "content": "## 💰 Cost Engineering\n\n- **0 paid nodes** until step 4\n- Free scrape via HTTP Request + Code (no headless)\n- **1 DeepSeek call** returns CV + Cover Letter + Subject in one JSON (3-in-1 saves ~66% tokens vs separate calls)\n- `max_tokens=1200`, `temperature=0.5`\n- All transformations done in free Code/Set nodes\n\nEst. cost per run: **~$0.001** (DeepSeek pricing 2026)"
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "▶ Webhook — Job Application",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 420],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "colwork/job-application",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "set-normalize",
+      "name": "🧹 Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 420],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "jobTitle", "value": "={{ ($json.body?.jobTitle ?? $json.jobTitle ?? '').toString().trim().slice(0, 200) }}", "type": "string" },
+            { "id": "2", "name": "company", "value": "={{ ($json.body?.company ?? $json.company ?? '').toString().trim().slice(0, 120) }}", "type": "string" },
+            { "id": "3", "name": "jobDescription", "value": "={{ ($json.body?.jobDescription ?? $json.jobDescription ?? '').toString().replace(/\\s+/g, ' ').trim().slice(0, 4000) }}", "type": "string" },
+            { "id": "4", "name": "companyUrl", "value": "={{ ($json.body?.companyUrl ?? $json.companyUrl ?? '').toString().trim() }}", "type": "string" },
+            { "id": "5", "name": "resumeMd", "value": "={{ ($json.body?.resumeMd ?? $json.resumeMd ?? '').toString().slice(0, 6000) }}", "type": "string" },
+            { "id": "6", "name": "recruiterEmail", "value": "={{ ($json.body?.recruiterEmail ?? $json.recruiterEmail ?? '').toString().trim() }}", "type": "string" },
+            { "id": "7", "name": "candidateName", "value": "={{ ($json.body?.candidateName ?? $json.candidateName ?? '').toString().trim() }}", "type": "string" },
+            { "id": "8", "name": "candidateRole", "value": "={{ ($json.body?.candidateRole ?? $json.candidateRole ?? 'AI Automation Engineer').toString().trim() }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if-has-url",
+      "name": "🔀 Has Company URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 420],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.companyUrl }}",
+              "rightValue": "^https?://",
+              "operator": { "type": "string", "operation": "regex" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-scrape-about",
+      "name": "🌐 Scrape Company About",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 320],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.companyUrl.replace(/\\/$/, '') }}/about",
+        "options": {
+          "timeout": 8000,
+          "redirect": { "redirect": { "followRedirects": true, "maxRedirects": 4 } },
+          "response": { "response": { "responseFormat": "text", "neverError": true } }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "User-Agent", "value": "Mozilla/5.0 (compatible; ColworkBot/2.1; +https://colwork.dev)" },
+            { "name": "Accept", "value": "text/html,application/xhtml+xml" }
+          ]
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "code-strip-html",
+      "name": "✂ Extract About Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 320],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const html = String($input.first().json.data || $input.first().json.body || '');\nlet text = html\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"')\n  .replace(/&#39;/g, \"'\")\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst keywordHit = text.match(/(About|Mission|Our story|Who we are|We are|What we do|O nas|Misja|Nasza historia)[\\s\\S]{0,1200}/i);\nconst slice = (keywordHit ? keywordHit[0] : text).slice(0, 1800);\n\nreturn [{ json: { companyContext: slice, scrapeOk: slice.length > 80, scrapeBytes: html.length } }];"
+      }
+    },
+    {
+      "id": "set-empty-context",
+      "name": "∅ Skip Scrape",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 520],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "companyContext", "value": "", "type": "string" },
+            { "id": "2", "name": "scrapeOk", "value": "={{ false }}", "type": "boolean" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "merge-context",
+      "name": "🔗 Merge Context",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 420],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      }
+    },
+    {
+      "id": "set-build-prompt",
+      "name": "🛠 Build LLM Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 420],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "system", "value": "Polski rekruter-kopirajter. Odpowiadasz wyłącznie poprawnym JSON-em.", "type": "string" },
+            {
+              "id": "2",
+              "name": "user",
+              "value": "=Stanowisko: {{ $json.jobTitle }}\nFirma: {{ $json.company }}\nKandydat: {{ $json.candidateName }} ({{ $json.candidateRole }})\n\nOpis oferty (skrót): {{ $json.jobDescription.slice(0, 1800) }}\n\nKontekst firmy z 'O nas': {{ ($json.companyContext || 'brak — użyj wiedzy ogólnej') }}\n\nBaza CV (markdown): {{ ($json.resumeMd || 'brak — wygeneruj na podstawie roli kandydata') }}\n\nWygeneruj JSON: {\"cv\":\"<CV w markdown PL, max 3500 znaków, sekcje: Podsumowanie, Doświadczenie, Stack, Osiągnięcia>\",\"coverLetter\":\"<list motywacyjny PL, 800-1200 znaków, nawiązuje do firmy>\",\"emailSubject\":\"<70 znaków>\",\"emailBody\":\"<treść maila do rekrutera, 600-900 znaków, formalny ton>\",\"matchScore\":0-100,\"keyAlignment\":[\"<3-5 punktów>\"]}\n\nZwróć TYLKO JSON.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-deepseek",
+      "name": "🤖 DeepSeek (1 call → CV+Letter+Email)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "Cc3YlNK1V3vBxv0K", "name": "DeepSeek API (Colwork)" }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"deepseek-chat\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": {{ JSON.stringify($json.system) }} },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.user) }} }\n  ],\n  \"temperature\": 0.45,\n  \"max_tokens\": 1500,\n  \"response_format\": { \"type\": \"json_object\" }\n}",
+        "options": {
+          "timeout": 30000,
+          "response": { "response": { "neverError": true } }
+        }
+      }
+    },
+    {
+      "id": "code-parse-llm",
+      "name": "📦 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 420],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst raw = item.choices?.[0]?.message?.content || '';\nlet parsed = { cv: '', coverLetter: '', emailSubject: '', emailBody: '', matchScore: 0, keyAlignment: [] };\ntry {\n  parsed = JSON.parse(raw);\n} catch {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) { try { parsed = JSON.parse(m[0]); } catch {} }\n}\nconst clean = (s, max) => String(s || '').replace(/\\u200B|\\u200C|\\u200D|\\uFEFF/g, '').replace(/\\s+\\n/g, '\\n').trim().slice(0, max);\nreturn [{\n  json: {\n    cv: clean(parsed.cv, 3800),\n    coverLetter: clean(parsed.coverLetter, 1300),\n    emailSubject: clean(parsed.emailSubject, 80),\n    emailBody: clean(parsed.emailBody, 1000),\n    matchScore: Math.max(0, Math.min(100, Number(parsed.matchScore) || 0)),\n    keyAlignment: Array.isArray(parsed.keyAlignment) ? parsed.keyAlignment.slice(0, 6) : [],\n    aiTokensIn: item.usage?.prompt_tokens || 0,\n    aiTokensOut: item.usage?.completion_tokens || 0\n  }\n}];"
+      }
+    },
+    {
+      "id": "set-build-draft",
+      "name": "📧 Build Email Draft",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2220, 420],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "emailDraft.to", "value": "={{ $('🧹 Normalize Input').item.json.recruiterEmail }}", "type": "string" },
+            { "id": "2", "name": "emailDraft.subject", "value": "={{ $json.emailSubject || ($('🧹 Normalize Input').item.json.candidateRole + ' — aplikacja: ' + $('🧹 Normalize Input').item.json.jobTitle) }}", "type": "string" },
+            { "id": "3", "name": "emailDraft.body", "value": "={{ $json.emailBody }}", "type": "string" },
+            { "id": "4", "name": "emailDraft.attachments[0].filename", "value": "={{ 'CV_' + $('🧹 Normalize Input').item.json.candidateName.replace(/\\s+/g, '_') + '.md' }}", "type": "string" },
+            { "id": "5", "name": "emailDraft.attachments[0].content", "value": "={{ $json.cv }}", "type": "string" },
+            { "id": "6", "name": "emailDraft.attachments[0].mime", "value": "text/markdown", "type": "string" },
+            { "id": "7", "name": "emailDraft.attachments[1].filename", "value": "={{ 'CoverLetter_' + $('🧹 Normalize Input').item.json.candidateName.replace(/\\s+/g, '_') + '.md' }}", "type": "string" },
+            { "id": "8", "name": "emailDraft.attachments[1].content", "value": "={{ $json.coverLetter }}", "type": "string" },
+            { "id": "9", "name": "emailDraft.attachments[1].mime", "value": "text/markdown", "type": "string" },
+            { "id": "10", "name": "meta.companyContext", "value": "={{ $('🛠 Build LLM Prompt').item.json.companyContext || '' }}", "type": "string" },
+            { "id": "11", "name": "meta.generatedAt", "value": "={{ new Date().toISOString() }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-webhook",
+      "name": "✅ Respond → Colwork",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2440, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, jobTitle: $('🧹 Normalize Input').item.json.jobTitle, company: $('🧹 Normalize Input').item.json.company, matchScore: $json.matchScore, keyAlignment: $json.keyAlignment, cv: $json.cv, coverLetter: $json.coverLetter, emailDraft: $json.emailDraft, meta: $json.meta, usage: { promptTokens: $json.aiTokensIn, completionTokens: $json.aiTokensOut } } }}",
+        "options": { "responseCode": 200 }
+      }
+    }
+  ],
+  "connections": {
+    "▶ Webhook — Job Application": {
+      "main": [[{ "node": "🧹 Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "🧹 Normalize Input": {
+      "main": [[{ "node": "🔀 Has Company URL?", "type": "main", "index": 0 }]]
+    },
+    "🔀 Has Company URL?": {
+      "main": [
+        [{ "node": "🌐 Scrape Company About", "type": "main", "index": 0 }],
+        [{ "node": "∅ Skip Scrape", "type": "main", "index": 0 }]
+      ]
+    },
+    "🌐 Scrape Company About": {
+      "main": [[{ "node": "✂ Extract About Text", "type": "main", "index": 0 }]]
+    },
+    "✂ Extract About Text": {
+      "main": [[{ "node": "🔗 Merge Context", "type": "main", "index": 0 }]]
+    },
+    "∅ Skip Scrape": {
+      "main": [[{ "node": "🔗 Merge Context", "type": "main", "index": 1 }]]
+    },
+    "🔗 Merge Context": {
+      "main": [[{ "node": "🛠 Build LLM Prompt", "type": "main", "index": 0 }]]
+    },
+    "🛠 Build LLM Prompt": {
+      "main": [[{ "node": "🤖 DeepSeek (1 call → CV+Letter+Email)", "type": "main", "index": 0 }]]
+    },
+    "🤖 DeepSeek (1 call → CV+Letter+Email)": {
+      "main": [[{ "node": "📦 Parse AI Response", "type": "main", "index": 0 }]]
+    },
+    "📦 Parse AI Response": {
+      "main": [[{ "node": "📧 Build Email Draft", "type": "main", "index": 0 }]]
+    },
+    "📧 Build Email Draft": {
+      "main": [[{ "node": "✅ Respond → Colwork", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Warsaw",
+    "saveExecutionProgress": false,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 90,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

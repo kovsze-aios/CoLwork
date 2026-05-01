@@ -1,20 +1,155 @@
 {
-  "name": "linkedin-ai-agent",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "colwork",
+  "version": "8.3.0",
+  "description": "CoLwork — The Open-Source Autonomous Career Engine. Mixture-of-Experts AI agents + RAG Research Lab + n8n Cloud orchestration in a native desktop app.",
+  "main": "electron/main.js",
+  "homepage": "https://github.com/yourname/colwork",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourname/colwork.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "bin": {
+    "colwork": "./index.js"
+  },
+  "scripts": {
+    "cli": "node index.js",
+    "ui:dev": "vite --config ui/vite.config.js",
+    "ui:build": "vite build --config ui/vite.config.js",
+    "electron:dev": "cross-env COLWORK_DEV=1 electron .",
+    "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm run ui:dev\" \"wait-on http://localhost:3000 && npm run electron:dev\"",
+    "icons:build": "node build/build-icons.js",
+    "build:ui": "npm run ui:build",
+    "build:desktop": "npm run icons:build && npm run build:ui && electron-builder --win --x64",
+    "build:desktop:portable": "npm run icons:build && npm run build:ui && electron-builder --win --x64 -c.win.target=portable",
+    "build:all": "npm run icons:build && npm run build:ui && electron-builder -mwl",
+    "n8n:deploy": "node src/scripts/deploy_n8n_workflows.js"
+  },
+  "keywords": [
+    "electron",
+    "ai-agents",
+    "linkedin-automation",
+    "career",
+    "n8n",
+    "mixture-of-experts",
+    "rag",
+    "deepseek",
+    "open-source"
+  ],
+  "author": "Dawid Kowszewicz",
+  "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.15.2",
+    "boxen": "^5.1.2",
+    "chalk": "^4.1.2",
     "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ghost-cursor": "^1.4.2",
+    "google-spreadsheet": "^5.2.0",
+    "inquirer": "^8.2.7",
     "node-cron": "^4.2.1",
+    "node-pty": "^1.0.0",
+    "nodemailer": "^8.0.7",
     "openai": "^6.35.0",
+    "path-exists": "^5.0.0",
+    "pdf-parse": "^2.4.5",
     "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "clsx": "^2.1.1",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "lucide-react": "^0.468.0",
+    "png-to-ico": "^2.1.8",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "sharp": "^0.33.5",
+    "tailwind-merge": "^2.6.1",
+    "tailwindcss": "^4.2.4",
+    "vite": "^8.0.10",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "dev.colwork.desktop",
+    "productName": "CoLwork",
+    "copyright": "Copyright © 2026 Dawid Kowszewicz — MIT License",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "ui/dist/**/*",
+      "src/**/*",
+      "data/n8n_workflows/**/*",
+      "build/icon.png",
+      "index.js",
+      "package.json",
+      "!**/*.map",
+      "!**/.env",
+      "!**/.git",
+      "!**/node_modules/**/*.md",
+      "!**/node_modules/**/*.ts",
+      "!**/node_modules/**/test/**",
+      "!**/node_modules/**/tests/**"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "node_modules/@homebridge/node-pty-prebuilt-multiarch/**",
+      "**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "CoLwork-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CoLwork",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development"
+    }
   }
 }

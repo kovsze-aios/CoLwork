@@ -1,89 +1,84 @@
 "use strict";
 
-const { createSession, randomDelay } = require("../browser");
+const { browserManager, randomDelay } = require("../browser");
 const { generateAbout } = require("../ai");
+const { safe } = require("../utils/retry");
+const { clean, nameCase } = require("../utils/clean");
 
-/**
- * Update the "About" (O mnie) section on the authenticated LinkedIn profile.
- * @param {Object} opts
- * @param {string[]} opts.achievements - recent career highlights
- * @param {string} opts.name - full name override (defaults to reading from profile)
- */
+const DEFAULT_ACHIEVEMENTS = [
+  "Wdrożenie hybrydowego sklepu Medusa.js + Next.js z pełną automatyzacją procesów",
+  "Redukcja kosztów operacyjnych o 40% dzięki Make / n8n / Node.js",
+  "Integracja DeepSeek do analizy danych sprzedażowych i personalizacji ofert",
+];
+
 async function updateAboutSection({ achievements, name, currentRole } = {}) {
-  console.log("[profile] Launching browser session...");
-  const { page, browser } = await createSession();
-
+  let page;
   try {
-    console.log("[profile] Navigating to profile page...");
-    await page.goto("https://www.linkedin.com/in/me/", { waitUntil: "networkidle", timeout: 30000 });
-    await randomDelay(2000, 4000);
+    page = await browserManager.start();
+  } catch (e) {
+    console.error(`[profile] browser failed: ${e.message}`);
+    return { ok: false, error: "browser_failed" };
+  }
 
-    // Read current name if not provided
-    if (!name) {
-      name = await page.locator("h1.text-heading-xlarge").first().textContent().catch(() => "Specjalista AI");
-    }
+  let aboutText = "";
+  try {
+    await page.goto("https://www.linkedin.com/in/me/", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await randomDelay(1800, 3500);
 
-    console.log(`[profile] Generating updated About for: ${name}`);
-    const aboutText = await generateAbout({
-      name: name.trim(),
-      achievements: achievements || [
-        "Wdrożenie hybrydowego sklepu internetowego Medusa.js + Next.js z pełną automatyzacją procesów",
-        "Redukcja kosztów operacyjnych o 40% dzięki automatyzacji procesów biznesowych (Make, n8n, Node.js)",
-        "Integracja DeepSeek v4 Pro do analizy danych sprzedażowych i personalizacji ofert w e-commerce",
-      ],
-      currentRole: currentRole || "AI Automation Engineer",
+    const detectedName = await safe(
+      () => page.locator("h1.text-heading-xlarge").first().textContent(),
+      "",
+      "profile.name"
+    );
+    const finalName = nameCase(name || detectedName || "Specjalista AI");
+
+    aboutText = await generateAbout({
+      name: finalName,
+      achievements: achievements || DEFAULT_ACHIEVEMENTS,
+      currentRole: clean(currentRole || "AI Automation Engineer", { oneLine: true, max: 80 }),
     });
 
-    console.log("[profile] About text generated. Updating on LinkedIn...");
+    const editLinkOk = await safe(async () => {
+      await page.locator('a[href*="/edit/"]').first().click({ timeout: 5000 });
+      return true;
+    }, false, "profile.edit_link");
 
-    // Click the edit (pencil) button on the About section
-    const aboutSection = page.locator("#about, [data-section='summary']");
-    const editBtn = page.locator('button[aria-label*="Edit"], button:has-text("Edit")').first();
-
-    // LinkedIn UI varies — try multiple strategies
-    try {
-      await page.locator('a[href*="/edit/"]').first().click();
-    } catch {
-      // Fallback: directly navigate to edit intro
-      await page.goto("https://www.linkedin.com/in/me/edit/intro/", {
-        waitUntil: "networkidle",
-        timeout: 20000,
-      });
+    if (!editLinkOk) {
+      await safe(async () => {
+        await page.goto("https://www.linkedin.com/in/me/edit/intro/", { waitUntil: "domcontentloaded", timeout: 20000 });
+      }, null, "profile.edit_nav");
     }
 
-    await randomDelay(1500, 3000);
+    await randomDelay(1300, 2700);
 
-    // Find the summary/About textarea
     const summaryTextarea = page.locator("textarea#summary, textarea[name='summary']");
-    if (await summaryTextarea.count() > 0) {
-      await summaryTextarea.click();
-      await randomDelay(300, 600);
-      // Clear existing
-      await summaryTextarea.fill("");
-      await randomDelay(200, 400);
-      await summaryTextarea.type(aboutText, { delay: 15 });
-      await randomDelay(1000, 2000);
-
-      // Save
-      const saveBtn = page.locator('button[type="submit"], button:has-text("Save"), button:has-text("Zapisz")').first();
-      if (await saveBtn.count() > 0) {
-        await saveBtn.click();
-        await randomDelay(2000, 4000);
-        console.log("[profile] About section updated successfully.");
-      }
-    } else {
-      console.log("[profile] ⚠️  Could not find About textarea. LinkedIn UI may have changed.");
-      console.log("[profile] Generated About text (save manually):");
+    if (!(await summaryTextarea.count())) {
+      console.warn("[profile] textarea not found — printing generated text for manual save");
       console.log("─".repeat(50));
       console.log(aboutText);
       console.log("─".repeat(50));
+      return { ok: false, aboutText, error: "textarea_not_found" };
     }
-  } finally {
-    await browser.close();
-    console.log("[profile] Browser closed.");
-  }
 
-  return true;
+    await summaryTextarea.click({ timeout: 5000 });
+    await summaryTextarea.fill("");
+    await summaryTextarea.type(aboutText, { delay: 14 });
+    await randomDelay(900, 1800);
+
+    const saveBtn = page.locator('button[type="submit"], button:has-text("Save"), button:has-text("Zapisz")').first();
+    if (await saveBtn.count()) {
+      await saveBtn.click({ timeout: 5000 });
+      await randomDelay(1800, 3500);
+      console.log("[profile] ✓ About section updated");
+      return { ok: true, aboutText };
+    }
+    return { ok: false, aboutText, error: "save_button_not_found" };
+  } catch (e) {
+    console.error(`[profile] error: ${e.message?.slice(0, 120)}`);
+    return { ok: false, aboutText, error: e.message };
+  } finally {
+    await safe(() => browserManager.stop(), null, "browser.stop");
+  }
 }
 
 module.exports = { updateAboutSection };

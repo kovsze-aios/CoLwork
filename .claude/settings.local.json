@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 25 node index.js help)",
+      "Bash(node -e ' *)",
+      "Bash(timeout 25 node index.js usage)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('count:', len\\(d.get\\('data',[]\\)\\)\\); [print\\(' ', w.get\\('id'\\), w.get\\('name'\\), 'active=', w.get\\('active'\\)\\) for w in d.get\\('data',[]\\)]\")",
+      "Bash(curl -sS -i -X GET 'https://n8n-automat-78020994755.europe-west3.run.app/api/v1/workflows?limit=5' -H 'X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjJjZDE3NTlkLTAxMDYtNDZkZS1hMDFmLWNjNGQzNDhjOTY1ZiIsImlhdCI6MTc3NzE0NTIzOX0.9N05btymxVnGYkMjeBFi2KSm7QYYV5-Wh8VKEoMBAFc')",
+      "Bash(curl -sS -i -X GET \"https://n8n-automat-78020994755.europe-west3.run.app/\")",
+      "Bash(nslookup n8n-automat-78020994755.europe-west3.run.app)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | %{url_effective}\\\\n\" -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows?limit=1\")",
+      "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows?limit=50\")",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\(0,'utf8'\\);const j=JSON.parse\\(c\\);console.log\\('count:',j.data?.length||0\\);\\(j.data||[]\\).forEach\\(w=>console.log\\(' -', w.id, '|', w.name, '| active:', w.active\\)\\);\")",
+      "Bash(node -c src/scripts/deploy_n8n_workflows.js)",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('data/n8n_workflows/job_application_engine.json','utf8'\\)\\); console.log\\('json OK'\\)\")",
+      "Bash(node src/scripts/deploy_n8n_workflows.js job_application_engine)",
+      "Bash(curl -s -i -X POST -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" -H \"Content-Type: application/json\" -d '{\"name\":\"probe\",\"nodes\":[],\"connections\":{},\"settings\":{}}' \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows\")",
+      "Bash(curl -s -X DELETE -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows/JIt0wwmpQZVEscn2\" -o /dev/null -w \"delete probe: %{http_code}\\\\n\")",
+      "Bash(curl -s -X DELETE -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows/y8LptU8MRmZkXz0G\" -o /dev/null -w \"delete: %{http_code}\\\\n\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('data/n8n_workflows/profile_optimizer.json','utf8'\\)\\);JSON.parse\\(require\\('fs'\\).readFileSync\\('data/n8n_workflows/sheets_append.json','utf8'\\)\\);console.log\\('both json OK'\\)\")",
+      "Bash(node src/scripts/deploy_n8n_workflows.js profile_optimizer)",
+      "Bash(node src/scripts/deploy_n8n_workflows.js sheets_append)",
+      "Bash(node -c src/utils/n8n_bridge.js)",
+      "Bash(node -c index.js)",
+      "Bash(node index.js help)",
+      "Bash(curl -s -X POST -H \"Content-Type: application/json\" -d '{\"jobTitle\":\"Senior AI Engineer\",\"company\":\"Acme AI\",\"jobDescription\":\"Build LLM agents with Python, Node.js, vector DBs. Lead a team of 3 engineers, ship MLOps pipelines on GCP.\",\"companyUrl\":\"\",\"candidateName\":\"Dawid Kowszewicz\",\"candidateRole\":\"AI Automation Engineer\",\"recruiterEmail\":\"hr@acme.ai\"}' \"https://n8n-automat-280209947550.europe-west3.run.app/webhook/colwork/job-application\" --max-time 60)",
+      "Bash(curl -s -i -X POST -H \"Content-Type: application/json\" -d '{\"jobTitle\":\"Senior AI Engineer\",\"company\":\"Acme AI\",\"jobDescription\":\"Build LLM agents with Python, Node.js, vector DBs. Lead a team of 3.\",\"candidateName\":\"Dawid Kowszewicz\",\"candidateRole\":\"AI Automation Engineer\"}' \"https://n8n-automat-280209947550.europe-west3.run.app/webhook/colwork/job-application\" --max-time 90 -o /tmp/job_resp.json -w \"http=%{http_code} time=%{time_total}s size=%{size_download}\\\\n\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"warmup api: %{http_code}\\\\n\" -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMGM4YmMzMS0zMTYzLTRiNTAtYjhiZC1lMDNlMzEwZThmODUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjJkZjQyNzEtNmQ4NC00YTA1LWJkYWItYTM3ZWNjODJkNTdkIiwiaWF0IjoxNzc3MTQzNzY3fQ.45l9-JuCOXM2NMh0n6RS27lzB6K6CJulF7gDvkZ-1-Q\" \"https://n8n-automat-280209947550.europe-west3.run.app/api/v1/workflows/mF2hzezC3Jkl1WJm\" -H \"Accept: application/json\")",
+      "Bash(curl -s -i -X POST -H \"Content-Type: application/json\" -d '{\"jobTitle\":\"Senior AI Engineer\",\"company\":\"Acme AI\",\"jobDescription\":\"Build LLM agents with Python, Node.js, vector DBs.\",\"candidateName\":\"Dawid Kowszewicz\",\"candidateRole\":\"AI Automation Engineer\"}' \"https://n8n-automat-280209947550.europe-west3.run.app/webhook/colwork/job-application\" --max-time 120 -w \"\\\\nhttp=%{http_code} time=%{time_total}s\\\\n\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('node-pty'\\); console.log\\('node-pty: OK'\\)\")",
+      "Bash(node -e \"require\\('@xterm/xterm'\\); console.log\\('@xterm/xterm: OK'\\)\")",
+      "Bash(node -e \"require\\('@xterm/addon-fit'\\); console.log\\('@xterm/addon-fit: OK'\\)\")",
+      "Bash(node --check \"C:/Users/kowsz/AI_Ecosystem/colwork/electron/main.js\")",
+      "Bash(node --check \"C:/Users/kowsz/AI_Ecosystem/colwork/electron/preload.js\")",
+      "Bash(git add *)"
+    ]
+  }
+}

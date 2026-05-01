@@ -2,268 +2,233 @@
 
 const OpenAI = require("openai");
 const path = require("path");
+const fs = require("fs");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const client = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || "sk-placeholder",
-  baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
-});
+const { withRetry } = require("./utils/retry");
+const { clean, tryJSON } = require("./utils/clean");
+
+// ── Cost-minimal model routing ───────────────────────────────────────────────
+// DeepSeek's cheapest non-reasoning chat model is `deepseek-chat`.
+// We default to it everywhere and cap max_tokens aggressively.
 
 const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+const API_KEY = process.env.DEEPSEEK_API_KEY || "";
 
-// ── Existing functions (Level 1) ─────────────────────────────────────────────
+const client = new OpenAI({
+  apiKey: API_KEY || "sk-placeholder",
+  baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
+  timeout: 30000,
+});
 
-async function generatePost({ topic, tone = "thought-leadership", length = "medium" }) {
-  const lengthMap = { short: "800–1200 znaków", medium: "1500–2500 znaków", long: "3000–4500 znaków" };
-  const targetLength = lengthMap[length] || lengthMap.medium;
+// ── Free-tier guardrails ─────────────────────────────────────────────────────
+// Hard cap calls per process to avoid runaway spend; reset only on new process.
 
-  const prompt = `Jesteś ekspertem od automatyzacji procesów biznesowych, AI i e-commerce.
-Napisz profesjonalny post na LinkedIn w języku polskim.
+const HARD_CALL_LIMIT = parseInt(process.env.AI_MAX_CALLS_PER_RUN || "120", 10);
+const HARD_TOKEN_LIMIT = parseInt(process.env.AI_MAX_TOKENS_PER_RUN || "180000", 10);
+const usage = { calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0 };
 
-Temat: ${topic}
-Ton: ${tone}
-Długość: ${targetLength}
+// DeepSeek published prices (USD / 1M tokens) — adjust if pricing changes.
+const PRICE_IN = parseFloat(process.env.DEEPSEEK_PRICE_IN || "0.27");
+const PRICE_OUT = parseFloat(process.env.DEEPSEEK_PRICE_OUT || "1.10");
 
-Wymagania:
-- Angażujący haczyk (hook) w pierwszym zdaniu.
-- 3–5 konkretnych insightów lub wskazówek popartych doświadczeniem.
-- Jeden akapit o tym, jak automatyzacja / AI rozwiązuje konkretny problem biznesowy.
-- Zakończ pytaniem do czytelników (call-to-engagement).
-- Użyj 3–5 trafnych hashtagów na końcu.
-- Format: krótkie akapity, maksymalnie 3 zdania na akapit, pusta linia między akapitami.
-- Zero emoji. Profesjonalny, merytoryczny język.
+const TELEMETRY_PATH = path.resolve(__dirname, "..", "data", "ai_usage.jsonl");
 
-Wygeneruj TYLKO treść posta, bez nagłówków, bez cudzysłowów otaczających całość.`;
+function recordUsage(label, resp) {
+  const u = resp?.usage || {};
+  const promptT = u.prompt_tokens || 0;
+  const compT = u.completion_tokens || 0;
+  usage.calls++;
+  usage.promptTokens += promptT;
+  usage.completionTokens += compT;
+  usage.costUsd += (promptT * PRICE_IN + compT * PRICE_OUT) / 1_000_000;
+  try {
+    fs.mkdirSync(path.dirname(TELEMETRY_PATH), { recursive: true });
+    fs.appendFileSync(
+      TELEMETRY_PATH,
+      JSON.stringify({ ts: Date.now(), label, promptT, compT }) + "\n"
+    );
+  } catch { /* telemetry must never crash callers */ }
+}
 
-  const resp = await client.chat.completions.create({
+function getUsage() {
+  return { ...usage };
+}
+
+function ensureBudget() {
+  if (!API_KEY) throw new Error("DEEPSEEK_API_KEY missing in .env");
+  if (usage.calls >= HARD_CALL_LIMIT) {
+    throw new Error(`AI budget exceeded: ${usage.calls} calls (cap=${HARD_CALL_LIMIT})`);
+  }
+  if (usage.promptTokens + usage.completionTokens >= HARD_TOKEN_LIMIT) {
+    throw new Error(`AI budget exceeded: ${usage.promptTokens + usage.completionTokens} tokens`);
+  }
+}
+
+// ── Central call wrapper (retry + telemetry) ─────────────────────────────────
+
+async function chat({ system, user, label, maxTokens = 400, temperature = 0.5, json = false }) {
+  ensureBudget();
+  const messages = [];
+  if (system) messages.push({ role: "system", content: system });
+  messages.push({ role: "user", content: user });
+
+  const params = {
     model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś profesjonalnym polskim copywriterem specjalizującym się w treściach LinkedIn o automatyzacji i AI. Odpowiadasz wyłącznie treścią posta, bez meta-komentarzy." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.8,
-    max_tokens: 1500,
-  });
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+  if (json) {
+    params.response_format = { type: "json_object" };
+  }
 
-  return resp.choices[0].message.content.trim();
+  const resp = await withRetry(
+    () => client.chat.completions.create(params),
+    { retries: 3, baseDelay: 700, label: `ai.${label}` }
+  );
+  recordUsage(label, resp);
+  return clean(resp.choices?.[0]?.message?.content || "", { oneLine: false });
 }
 
-async function generateAbout({ name, achievements, currentRole }) {
-  const achievementsText = achievements.map((a, i) => `${i + 1}. ${a}`).join("\n");
+// ── Token-minimal prompts (Polish, terse, zero filler) ───────────────────────
 
-  const prompt = `Jesteś ekspertem od personal brandingu na LinkedIn.
-Napisz sekcję "O mnie" dla profilu LinkedIn w języku polskim.
+const SYS_POL = "Polski copywriter LinkedIn. Bez emoji. Bez meta-komentarzy.";
+const SYS_JSON = "Zwracasz wyłącznie poprawny JSON. Bez markdownu.";
 
-Imię i nazwisko: ${name}
-Stanowisko: ${currentRole}
-Ostatnie osiągnięcia do uwzględnienia:
-${achievementsText}
+async function generatePost({ topic, tone = "thought-leadership", length = "medium" } = {}) {
+  const lengthMap = { short: 600, medium: 1400, long: 2400 };
+  const charLimit = lengthMap[length] || lengthMap.medium;
+  const tokens = Math.min(900, Math.ceil(charLimit / 2.2));
 
-Wymagania:
-- Maksymalnie 2600 znaków.
-- Pierwsze 3 linijki to "hook" — najważniejsze, bo LinkedIn pokazuje tylko je przed "zobacz więcej".
-- Podkreśl umiejętności łączenia AI z realnymi procesami biznesowymi.
-- Wymień konkretne rezultaty (np. redukcja kosztów, wzrost konwersji, oszczędność czasu).
-- Ton: pewny siebie, ale nie arogancki. Merytoryczny ekspert.
-- Zakończ zaproszeniem do współpracy.
-- Zero emoji.
+  const user = [
+    `Temat: ${clean(topic, { max: 220 })}`,
+    `Ton: ${tone}`,
+    `Limit: ${charLimit} znaków`,
+    "Struktura: hook (1 zd.) → 3 insighty → CTA → 3-5 hashtagów.",
+    "Krótkie akapity. Po polsku. Tylko treść posta.",
+  ].join("\n");
 
-Wygeneruj TYLKO treść sekcji, bez nagłówków, bez "O mnie:", bez cudzysłowów otaczających całość.`;
-
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś profesjonalnym polskim copywriterem LinkedIn. Odpowiadasz wyłącznie treścią sekcji, bez meta-komentarzy." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.7,
-    max_tokens: 1200,
-  });
-
-  return resp.choices[0].message.content.trim();
+  return chat({ system: SYS_POL, user, label: "post", maxTokens: tokens, temperature: 0.7 });
 }
 
-async function analyzeJobFit({ title, description, company }) {
-  const prompt = `Przeanalizuj tę ofertę pracy i oceń, czy pasuje do kandydata z doświadczeniem w:
-- Prompt Engineering (DeepSeek, Claude, GPT)
-- Automatyzacji procesów biznesowych (Make, n8n, skrypty Node.js)
-- E-commerce (Medusa.js, Next.js, integracje API)
-- Wdrażaniu AI w małych i średnich firmach
-
-Oferta:
-- Stanowisko: ${title}
-- Firma: ${company}
-- Opis: ${description.slice(0, 1500)}
-
-Zwróć JSON w formacie:
-{
-  "score": <liczba 0-100, gdzie 100 = idealne dopasowanie>,
-  "reasoning": "<2-3 zdania uzasadnienia po polsku>",
-  "coverLetter": "<krótki, spersonalizowany list motywacyjny po polsku (max 800 znaków), podkreślający doświadczenie w automatyzacji i AI>"
+async function generateAbout({ name, achievements = [], currentRole } = {}) {
+  const ach = achievements.slice(0, 4).map((a, i) => `${i + 1}. ${clean(a, { max: 160 })}`).join("\n");
+  const user = [
+    `Imię: ${clean(name, { max: 60 })}`,
+    `Rola: ${clean(currentRole, { max: 80 })}`,
+    "Osiągnięcia:",
+    ach,
+    "Sekcja LinkedIn O mnie. Max 2400 znaków.",
+    "Pierwsze 3 linijki = hook (LinkedIn obcina dalszą część).",
+    "AI + biznes. Konkretne liczby. Pewny ton, bez emoji.",
+    "Zakończ zaproszeniem do współpracy. Tylko treść sekcji.",
+  ].join("\n");
+  return chat({ system: SYS_POL, user, label: "about", maxTokens: 750, temperature: 0.6 });
 }
 
-ZWróć TYLKO JSON, bez markdowna, bez komentarzy.`;
-
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś asystentem kariery. Odpowiadasz wyłącznie czystym JSON." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.4,
-    max_tokens: 800,
-  });
-
-  const raw = resp.choices[0].message.content.trim();
-  return JSON.parse(raw.replace(/```json|```/g, "").trim());
+async function analyzeJobFit({ title, description, company } = {}) {
+  const user = [
+    `Stanowisko: ${clean(title, { oneLine: true, max: 120 })}`,
+    `Firma: ${clean(company, { oneLine: true, max: 80 })}`,
+    `Opis: ${clean(description, { max: 1000 })}`,
+    "",
+    "Kandydat: Prompt Engineer + automatyzacja (Make/n8n/Node), Medusa.js+Next.js, agenci AI, redukcja kosztów.",
+    "Zwróć JSON: {\"score\":0-100,\"reasoning\":\"<2 zd. PL>\",\"coverLetter\":\"<max 600 zn. PL>\"}",
+  ].join("\n");
+  const raw = await chat({ system: SYS_JSON, user, label: "job_fit", maxTokens: 450, temperature: 0.3, json: true });
+  const parsed = tryJSON(raw, { score: 0, reasoning: "Parse failed.", coverLetter: "" });
+  parsed.score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  parsed.reasoning = clean(parsed.reasoning, { max: 300 });
+  parsed.coverLetter = clean(parsed.coverLetter, { max: 800 });
+  return parsed;
 }
 
-// ── Level 2: Aggregator functions ─────────────────────────────────────────────
-
-/**
- * Turn a raw tech article into a LinkedIn-ready business post.
- * @param {Object} article
- * @param {string} article.title - RSS article title
- * @param {string} article.summary - Extracted summary / first paragraphs
- * @param {string} article.url - Original URL for attribution
- * @returns {Promise<{post: string, hashtags: string[]}>}
- */
-async function analyzeArticle({ title, summary, url }) {
-  const prompt = `Jesteś ekspertem tłumaczącym skomplikowane technologie na język korzyści biznesowych.
-Przeczytałeś artykuł i masz go przekształcić w post LinkedIn.
-
-ARTYKUŁ:
-Tytuł: ${title}
-Źródło: ${url}
-Treść (wyciąg): ${summary.slice(0, 2000)}
-
-ZADANIE:
-1. Wyjaśnij tę technologię / news w 2-3 zdaniach prostym językiem — tak, by zrozumiał to właściciel firmy, nie programista.
-2. Wskaż 2-3 konkretne zastosowania biznesowe w kontekście automatyzacji / e-commerce / AI.
-3. Podaj swoją opinię ekspercką (czy to game-changer, czy hype).
-4. Zaproponuj 3-5 hashtagów pasujących do tematu.
-
-Zwróć JSON w formacie:
-{
-  "post": "<gotowy post LinkedIn, max 2000 znaków, polski, profesjonalny>",
-  "hashtags": ["#tag1", "#tag2", "#tag3"]
+async function analyzeArticle({ title, summary, url } = {}) {
+  const user = [
+    `Tytuł: ${clean(title, { oneLine: true, max: 200 })}`,
+    `Treść: ${clean(summary, { max: 1200 })}`,
+    "Przekształć w post LinkedIn (PL, max 1500 zn): wyjaśnij prosto, 2-3 zastosowania biznesowe, ocena ekspercka.",
+    "Zwróć JSON: {\"post\":\"<treść>\",\"hashtags\":[\"#x\",\"#y\",\"#z\"]}",
+  ].join("\n");
+  const raw = await chat({ system: SYS_JSON, user, label: "article", maxTokens: 700, temperature: 0.55, json: true });
+  const parsed = tryJSON(raw, { post: "", hashtags: [] });
+  parsed.post = clean(parsed.post, { max: 1800 });
+  parsed.hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 6).map((h) => clean(h, { oneLine: true, max: 30 })) : [];
+  return parsed;
 }
 
-ZWróć TYLKO JSON, bez markdowna, bez komentarzy.`;
-
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś analitykiem IT i copywriterem. Odpowiadasz wyłącznie czystym JSON." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.6,
-    max_tokens: 1200,
-  });
-
-  const raw = resp.choices[0].message.content.trim();
-  return JSON.parse(raw.replace(/```json|```/g, "").trim());
+async function generateInviteMessage({ targetName, targetTitle, targetCompany, myRole } = {}) {
+  const user = [
+    `Do: ${clean(targetName, { oneLine: true, max: 60 })} | ${clean(targetTitle, { oneLine: true, max: 100 })} @ ${clean(targetCompany, { oneLine: true, max: 60 })}`,
+    `Ja: ${clean(myRole, { oneLine: true, max: 80 })}`,
+    "Notka zaproszenia LinkedIn (max 200 zn., PL).",
+    "Wspomnij ich rolę/firmę. Krótka wartość. Bez 'Witam'/'Pozdrawiam'. Tylko treść notki.",
+  ].join("\n");
+  const out = await chat({ system: SYS_POL, user, label: "invite", maxTokens: 130, temperature: 0.7 });
+  return clean(out, { oneLine: true, max: 200 });
 }
 
-// ── Level 2: Smart networking ────────────────────────────────────────────────
-
-/**
- * Generate a personalized invite message for a LinkedIn connection.
- * @param {Object} opts
- * @param {string} opts.targetName - The person's name
- * @param {string} opts.targetTitle - Their headline / job title
- * @param {string} opts.targetCompany - Their current company
- * @param {string} opts.myRole - My current role
- * @returns {Promise<string>} - Invite message (max 200 chars, LinkedIn limit is 300)
- */
-async function generateInviteMessage({ targetName, targetTitle, targetCompany, myRole }) {
-  const prompt = `Jesteś ekspertem od networkingu biznesowego na LinkedIn.
-Wygeneruj spersonalizowaną notkę do zaproszenia do kontaktów.
-
-Odbiorca:
-- Imię i nazwisko: ${targetName}
-- Stanowisko: ${targetTitle || "Nieznane"}
-- Firma: ${targetCompany || "Nieznana"}
-
-Nadawca:
-- Stanowisko: ${myRole || "AI Automation Engineer"}
-
-Wymagania:
-- MAX 200 ZNAKÓW (LinkedIn limit notki to 300, ale chcemy być bezpieczni).
-- Wspomnij konkretnie stanowisko/firmę odbiorcy — pokaż, że nie jest to masowa wiadomość.
-- Zaproponuj krótką wartość: wymiana doświadczeń, wspólny temat (AI, automatyzacja, tech).
-- Ton: profesjonalny, ciepły, bez nachalności.
-- Język polski.
-- NIE używaj słowa "Witam" — użyj naturalnego otwarcia.
-- NIE kończ na "Pozdrawiam" — zakończ zaproszeniem do kontaktu.
-
-Wygeneruj TYLKO treść wiadomości, bez nagłówków, bez cudzysłowów, bez "Wiadomość:".`;
-
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś specjalistą od networkingu LinkedIn. Odpowiadasz wyłącznie treścią notki do zaproszenia." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.8,
-    max_tokens: 200,
-  });
-
-  return resp.choices[0].message.content.trim().slice(0, 200);
+async function generateFormAnswer({ question, jobTitle, company } = {}) {
+  const user = [
+    `Stanowisko: ${clean(jobTitle, { oneLine: true, max: 80 })} @ ${clean(company, { oneLine: true, max: 60 })}`,
+    `Pytanie: ${clean(question, { max: 300 })}`,
+    "Kandydat: prompt engineer, automatyzacja Make/n8n/Node/Playwright, e-commerce Medusa+Next, AI w MŚP, redukcja kosztów.",
+    "Odpowiedź PL, max 450 zn. Konkretna, z liczbami jeśli możliwe. Bez 'Uważam, że...'. Tylko treść.",
+  ].join("\n");
+  const out = await chat({ system: SYS_POL, user, label: "form_answer", maxTokens: 200, temperature: 0.4 });
+  return clean(out, { max: 480 });
 }
 
-// ── Level 2: Dynamic form answers ────────────────────────────────────────────
+async function generateIcebreaker({ name, title, company, lastPost } = {}) {
+  const user = [
+    `Osoba: ${clean(name, { oneLine: true, max: 60 })} | ${clean(title, { oneLine: true, max: 100 })} @ ${clean(company, { oneLine: true, max: 60 })}`,
+    `Ostatni post (wyciąg): ${clean(lastPost, { max: 280 })}`,
+    "Icebreaker LinkedIn po polsku, max 180 zn. Konkretne nawiązanie do posta jeśli jest. Bez 'Witam'. Tylko treść.",
+  ].join("\n");
+  const out = await chat({ system: SYS_POL, user, label: "icebreaker", maxTokens: 110, temperature: 0.7 });
+  return clean(out, { oneLine: true, max: 200 });
+}
 
-/**
- * Generate an answer to a custom application form question.
- * @param {Object} opts
- * @param {string} opts.question - The form question text
- * @param {string} opts.jobTitle - The job title being applied to
- * @param {string} opts.company - The company name
- * @returns {Promise<string>} - Concise answer in Polish
- */
-async function generateFormAnswer({ question, jobTitle, company }) {
-  const prompt = `Odpowiadasz na pytanie w formularzu rekrutacyjnym na LinkedIn.
+async function scoreSentiment(text) {
+  if (!text || text.length < 4) return { score: 0, label: "neutral" };
+  const user = [
+    `Tekst: ${clean(text, { max: 600 })}`,
+    "Zwróć JSON: {\"score\":-100..100,\"label\":\"positive|neutral|negative\"}",
+  ].join("\n");
+  const raw = await chat({ system: SYS_JSON, user, label: "sent_one", maxTokens: 80, temperature: 0.1, json: true });
+  const parsed = tryJSON(raw, { score: 0, label: "neutral" });
+  parsed.score = Math.max(-100, Math.min(100, Number(parsed.score) || 0));
+  parsed.label = ["positive", "neutral", "negative"].includes(parsed.label) ? parsed.label : "neutral";
+  return parsed;
+}
 
-Stanowisko: ${jobTitle}
-Firma: ${company}
-Pytanie rekrutera: "${question}"
-
-Kandydat ma doświadczenie w:
-- Prompt Engineering (DeepSeek, Claude, GPT)
-- Automatyzacji procesów biznesowych (Make, n8n, Node.js, Playwright)
-- E-commerce (Medusa.js, Next.js, integracje API)
-- Wdrażaniu AI agentów w MŚP
-- Redukcji kosztów operacyjnych przez automatyzację
-
-Wymagania odpowiedzi:
-- MAX 500 ZNAKÓW.
-- Konkretna, merytoryczna, bez lania wody.
-- Jeśli to pytanie o doświadczenie — podaj konkretny przykład z liczbami.
-- Jeśli to pytanie o motywację — połącz pasję do AI z realnymi rezultatami.
-- Język polski, profesjonalny.
-- Nie zaczynaj od "Uważam, że..." — przejdź od razu do rzeczy.
-
-Wygeneruj TYLKO treść odpowiedzi, bez cudzysłowów, bez "Odpowiedź:".`;
-
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: "Jesteś profesjonalnym kandydatem. Odpowiadasz wyłącznie treścią odpowiedzi na pytanie rekrutacyjne." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.5,
-    max_tokens: 400,
-  });
-
-  return resp.choices[0].message.content.trim().slice(0, 500);
+async function analyzeComments(comments = []) {
+  if (!comments.length) return { overall: "neutral", breakdown: [], actionable: "Brak komentarzy." };
+  const block = comments
+    .slice(0, 25)
+    .map((c, i) => `[${i}]${clean(c.author, { oneLine: true, max: 40 })}: ${clean(c.text, { oneLine: true, max: 200 })}`)
+    .join("\n");
+  const user = [
+    `Komentarze:\n${block}`,
+    "Zwróć JSON: {\"overall\":\"positive|neutral|negative|mixed\",\"breakdown\":[{\"i\":0,\"s\":\"positive|neutral|negative\",\"intent\":\"<5 słów>\"}],\"actionable\":\"<1 zd. PL>\"}",
+  ].join("\n");
+  const raw = await chat({ system: SYS_JSON, user, label: "sent_batch", maxTokens: 500, temperature: 0.2, json: true });
+  return tryJSON(raw, { overall: "neutral", breakdown: [], actionable: "Brak analizy." });
 }
 
 module.exports = {
+  chat,
   generatePost,
   generateAbout,
   analyzeJobFit,
   analyzeArticle,
   generateInviteMessage,
   generateFormAnswer,
+  generateIcebreaker,
+  scoreSentiment,
+  analyzeComments,
+  getUsage,
+  client,
+  MODEL,
 };

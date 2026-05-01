@@ -1,0 +1,180 @@
+{
+  "name": "Colwork — LinkedIn Profile Optimizer",
+  "nodes": [
+    {
+      "id": "sticky-header",
+      "name": "📌 Architecture Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 80],
+      "parameters": {
+        "width": 760,
+        "height": 220,
+        "color": 6,
+        "content": "## 🪄 Colwork — LinkedIn Profile Optimizer\n\n**Trigger:** `POST /webhook/colwork/profile-optimize`\n\n**Pipeline (cost-optimized — 1 LLM call total):**\n1. Normalize incoming profile snapshot + goal description\n2. Free keyword extraction from the goal (Code node, no LLM)\n3. **Single DeepSeek call** generates headline + new About + optimized skills + content angles\n4. Score before/after readability, keyword density (Code node)\n5. Respond with full optimization package\n\n**Inputs:** `{ currentHeadline, currentAbout?, currentSkills?, goal, language? }`\n**Outputs:** `{ newHeadline, newAbout, recommendedSkills, contentAngles, audit }`"
+      }
+    },
+    {
+      "id": "sticky-cost",
+      "name": "💰 Cost Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [880, 80],
+      "parameters": {
+        "width": 360,
+        "height": 220,
+        "color": 4,
+        "content": "## 💰 Cost Engineering\n\n- Pre-LLM keyword mining in free Code node\n- **1 DeepSeek call** returns headline + About + skills + 3 content angles in one JSON (~70% token savings vs separate calls)\n- `max_tokens=1000`, `temperature=0.4`\n- Audit math (keyword density, length scores) done locally\n\nEst. cost per run: **~$0.0008**"
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "▶ Webhook — Profile Optimize",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 420],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "colwork/profile-optimize",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "set-normalize",
+      "name": "🧹 Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 420],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "currentHeadline", "value": "={{ ($json.body?.currentHeadline ?? $json.currentHeadline ?? '').toString().trim().slice(0, 220) }}", "type": "string" },
+            { "id": "2", "name": "currentAbout", "value": "={{ ($json.body?.currentAbout ?? $json.currentAbout ?? '').toString().slice(0, 4000) }}", "type": "string" },
+            { "id": "3", "name": "currentSkills", "value": "={{ Array.isArray($json.body?.currentSkills) ? $json.body.currentSkills : (Array.isArray($json.currentSkills) ? $json.currentSkills : []) }}", "type": "array" },
+            { "id": "4", "name": "goal", "value": "={{ ($json.body?.goal ?? $json.goal ?? '').toString().trim().slice(0, 600) }}", "type": "string" },
+            { "id": "5", "name": "language", "value": "={{ ($json.body?.language ?? $json.language ?? 'pl').toString().trim() }}", "type": "string" },
+            { "id": "6", "name": "candidateName", "value": "={{ ($json.body?.candidateName ?? $json.candidateName ?? '').toString().trim() }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-mine-keywords",
+      "name": "⛏ Mine Keywords (free)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 420],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst stop = new Set(['i','a','o','w','z','do','na','dla','jako','oraz','aby','żeby','swojej','swoje','swoich','to','jest','są','być','the','and','for','with','to','of','in','on','at','as','an','by','is','be','our','your']);\nconst text = `${item.goal} ${item.currentHeadline} ${item.currentAbout}`.toLowerCase();\nconst tokens = text.match(/[\\p{L}][\\p{L}0-9+#\\.-]{2,}/gu) || [];\nconst freq = {};\nfor (const t of tokens) {\n  if (stop.has(t)) continue;\n  freq[t] = (freq[t] || 0) + 1;\n}\nconst topKeywords = Object.entries(freq)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 14)\n  .map(([w]) => w);\n\nconst aboutLen = (item.currentAbout || '').length;\nconst headlineLen = (item.currentHeadline || '').length;\nconst skillCount = (item.currentSkills || []).length;\n\nreturn [{\n  json: {\n    ...item,\n    extractedKeywords: topKeywords,\n    auditBefore: {\n      headlineLen,\n      aboutLen,\n      skillCount,\n      headlineScore: Math.min(100, Math.round(headlineLen / 220 * 100)),\n      aboutScore: aboutLen < 600 ? Math.round(aboutLen / 6) : (aboutLen > 2600 ? 80 : 100)\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "set-build-prompt",
+      "name": "🛠 Build LLM Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 420],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "system", "value": "Jesteś senior LinkedIn brand strategistem. Optymalizujesz pod algorytm + recruiter search. Odpowiadasz wyłącznie poprawnym JSON-em w języku odbiorcy.", "type": "string" },
+            {
+              "id": "2",
+              "name": "user",
+              "value": "=Język wyjściowy: {{ $json.language }}\nKandydat: {{ $json.candidateName }}\nCel zawodowy: {{ $json.goal }}\n\nObecny nagłówek: {{ $json.currentHeadline || 'brak' }}\nObecne About (skrót): {{ ($json.currentAbout || 'brak').slice(0, 1400) }}\nObecne umiejętności: {{ ($json.currentSkills || []).slice(0, 30).join(', ') || 'brak' }}\nWydobyte słowa kluczowe: {{ ($json.extractedKeywords || []).join(', ') }}\n\nZwróć JSON: {\"newHeadline\":\"<max 220 znaków, mocny hook + role/keywords>\",\"newAbout\":\"<sekcje: hook (1-2 linie) → wartość (3-4 linie) → bullety osiągnięć (3-5) → CTA. 1500-2200 znaków>\",\"recommendedSkills\":[\"<25-40 unikalnych skilli ułożonych: top hard, top soft, niche, tooling>\"],\"contentAngles\":[\"<3 angle do postów LinkedIn — każdy z hookiem i tezą, max 200 znaków>\"],\"keywordsUsed\":[\"<8-15 kluczowych fraz wbudowanych w treści>\"]}\n\nZwróć TYLKO JSON.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-deepseek",
+      "name": "🤖 DeepSeek (1 call → headline+about+skills+angles)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "Cc3YlNK1V3vBxv0K", "name": "DeepSeek API (Colwork)" }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"deepseek-chat\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": {{ JSON.stringify($json.system) }} },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.user) }} }\n  ],\n  \"temperature\": 0.4,\n  \"max_tokens\": 1000,\n  \"response_format\": { \"type\": \"json_object\" }\n}",
+        "options": {
+          "timeout": 30000,
+          "response": { "response": { "neverError": true } }
+        }
+      }
+    },
+    {
+      "id": "code-parse-llm",
+      "name": "📦 Parse + Audit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 420],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const aiItem = $input.first().json;\nconst input = $('⛏ Mine Keywords (free)').first().json;\nconst raw = aiItem.choices?.[0]?.message?.content || '';\nlet parsed = { newHeadline: '', newAbout: '', recommendedSkills: [], contentAngles: [], keywordsUsed: [] };\ntry { parsed = JSON.parse(raw); }\ncatch {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) { try { parsed = JSON.parse(m[0]); } catch {} }\n}\n\nconst clean = (s, max) => String(s || '').replace(/\\u200B|\\u200C|\\u200D|\\uFEFF/g, '').replace(/\\s+\\n/g, '\\n').trim().slice(0, max);\nconst arrCap = (a, max) => Array.isArray(a) ? a.map(x => String(x).trim()).filter(Boolean).slice(0, max) : [];\n\nconst newHeadline = clean(parsed.newHeadline, 220);\nconst newAbout = clean(parsed.newAbout, 2400);\nconst recommendedSkills = arrCap(parsed.recommendedSkills, 40);\nconst contentAngles = arrCap(parsed.contentAngles, 3);\nconst keywordsUsed = arrCap(parsed.keywordsUsed, 15);\n\n// Audit AFTER\nconst lower = newAbout.toLowerCase();\nconst hits = keywordsUsed.filter(k => lower.includes(String(k).toLowerCase())).length;\nconst kwDensity = keywordsUsed.length > 0 ? Math.round(hits / keywordsUsed.length * 100) : 0;\nconst headlineScore = Math.min(100, Math.round(newHeadline.length / 220 * 100));\nconst aboutScore = newAbout.length < 600 ? Math.round(newAbout.length / 6) : (newAbout.length > 2400 ? 80 : 100);\n\nconst auditAfter = {\n  headlineLen: newHeadline.length,\n  aboutLen: newAbout.length,\n  skillCount: recommendedSkills.length,\n  headlineScore,\n  aboutScore,\n  keywordCoverage: kwDensity\n};\n\nconst delta = {\n  headlineLen: auditAfter.headlineLen - input.auditBefore.headlineLen,\n  aboutLen: auditAfter.aboutLen - input.auditBefore.aboutLen,\n  skillCount: auditAfter.skillCount - input.auditBefore.skillCount,\n  headlineScore: auditAfter.headlineScore - input.auditBefore.headlineScore,\n  aboutScore: auditAfter.aboutScore - input.auditBefore.aboutScore\n};\n\nreturn [{\n  json: {\n    newHeadline,\n    newAbout,\n    recommendedSkills,\n    contentAngles,\n    keywordsUsed,\n    audit: { before: input.auditBefore, after: auditAfter, delta },\n    usage: {\n      promptTokens: aiItem.usage?.prompt_tokens || 0,\n      completionTokens: aiItem.usage?.completion_tokens || 0\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "respond-webhook",
+      "name": "✅ Respond → Colwork",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1600, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, candidate: $('🧹 Normalize Input').item.json.candidateName, goal: $('🧹 Normalize Input').item.json.goal, newHeadline: $json.newHeadline, newAbout: $json.newAbout, recommendedSkills: $json.recommendedSkills, contentAngles: $json.contentAngles, keywordsUsed: $json.keywordsUsed, audit: $json.audit, usage: $json.usage, generatedAt: new Date().toISOString() } }}",
+        "options": { "responseCode": 200 }
+      }
+    }
+  ],
+  "connections": {
+    "▶ Webhook — Profile Optimize": {
+      "main": [[{ "node": "🧹 Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "🧹 Normalize Input": {
+      "main": [[{ "node": "⛏ Mine Keywords (free)", "type": "main", "index": 0 }]]
+    },
+    "⛏ Mine Keywords (free)": {
+      "main": [[{ "node": "🛠 Build LLM Prompt", "type": "main", "index": 0 }]]
+    },
+    "🛠 Build LLM Prompt": {
+      "main": [[{ "node": "🤖 DeepSeek (1 call → headline+about+skills+angles)", "type": "main", "index": 0 }]]
+    },
+    "🤖 DeepSeek (1 call → headline+about+skills+angles)": {
+      "main": [[{ "node": "📦 Parse + Audit", "type": "main", "index": 0 }]]
+    },
+    "📦 Parse + Audit": {
+      "main": [[{ "node": "✅ Respond → Colwork", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Warsaw",
+    "saveExecutionProgress": false,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 60,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
