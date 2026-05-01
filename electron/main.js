@@ -73,13 +73,18 @@ let mainWindow = null;
 // fall back to the unpacked path (production).
 let pty = null;
 try {
-  pty = require("node-pty");
-} catch (firstErr) {
+  // Prefer prebuilt multiarch (ships .node binaries for Electron's Node version)
+  pty = require("@homebridge/node-pty-prebuilt-multiarch");
+} catch {
   try {
-    const unpackedPath = path.join(process.resourcesPath || "", "app.asar.unpacked", "node_modules", "node-pty");
-    pty = require(unpackedPath);
-  } catch {
-    console.warn("[colwork] node-pty unavailable — terminal will use fallback shell:", firstErr.message);
+    pty = require("node-pty");
+  } catch (firstErr) {
+    try {
+      const unpackedPath = path.join(process.resourcesPath || "", "app.asar.unpacked", "node_modules", "node-pty");
+      pty = require(unpackedPath);
+    } catch {
+      console.warn("[colwork] node-pty unavailable — terminal will use fallback shell:", firstErr.message);
+    }
   }
 }
 

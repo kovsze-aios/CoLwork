@@ -19,8 +19,8 @@
     "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm run ui:dev\" \"wait-on http://localhost:3000 && npm run electron:dev\"",
     "icons:build": "node build/build-icons.js",
     "build:ui": "npm run ui:build",
-    "build:desktop": "npm run icons:build && npm run build:ui && npm run rebuild && electron-builder --win --x64",
-    "build:desktop:portable": "npm run icons:build && npm run build:ui && npm run rebuild && electron-builder --win --x64 -c.win.target=portable",
+    "build:desktop": "npm run icons:build && npm run build:ui && electron-builder --win --x64",
+    "build:desktop:portable": "npm run icons:build && npm run build:ui && electron-builder --win --x64 -c.win.target=portable",
     "build:all": "npm run icons:build && npm run build:ui && electron-builder -mwl",
     "rebuild": "electron-builder install-app-deps",
     "n8n:deploy": "node src/scripts/deploy_n8n_workflows.js"
@@ -39,6 +39,7 @@
   "author": "Dawid Kowszewicz",
   "license": "MIT",
   "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.15.2",
     "boxen": "^5.1.2",

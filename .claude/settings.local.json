@@ -38,7 +38,10 @@
       "Bash(grep -E \"cookies|memory\\\\.json|\\\\.env$\")",
       "Bash(git remote *)",
       "Bash(git branch *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npm run *)",
+      "Bash(gh *)",
+      "Bash(git commit *)"
     ]
   }
 }
