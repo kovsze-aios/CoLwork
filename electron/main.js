@@ -1,6 +1,13 @@
 "use strict";
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+
+// ── GPU rendering pipeline (must be set BEFORE app.ready) ─────────────────
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
+app.commandLine.appendSwitch("enable-accelerated-2d-canvas");
+app.commandLine.appendSwitch("disable-frame-rate-limit");
+app.commandLine.appendSwitch("enable-native-gpu-memory-buffers");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -255,7 +262,7 @@ ipcMain.handle("engine.health", async () => {
     memory: { totalActions: (memory.actions || []).length },
     recentActivity: recent,
     usage,
-    version: "9.0.0",
+    version: "9.2.0",
     board: { active: 6 },
   };
 });

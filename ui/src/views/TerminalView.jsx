@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Terminal as TermIcon, AlertTriangle } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
 const SHELL_ID = "main";
@@ -37,6 +38,7 @@ export default function TerminalView({ embedded = false }) {
   const cleanupRef = useRef(null);
   const [fallback, setFallback] = useState(false);
   const [bootError, setBootError] = useState(null);
+  const [renderer, setRenderer] = useState("webgl");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -54,9 +56,25 @@ export default function TerminalView({ embedded = false }) {
       allowProposedApi: true,
       scrollback: 5000,
       theme: THEME,
+      smoothScrollDuration: 0,
+      fastScrollSensitivity: 5,
+      fastScrollModifier: "alt",
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+
+    // WebGL renderer for GPU-accelerated text — falls back to canvas silently
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        setRenderer("canvas");
+      });
+      term.loadAddon(webgl);
+    } catch {
+      setRenderer("canvas");
+    }
+
     term.open(containerRef.current);
     fit.fit();
     termRef.current = term;

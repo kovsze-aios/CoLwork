@@ -27,7 +27,10 @@ function styleFromState(state, transition) {
   return {
     transition: `opacity ${dur}s ${ease}, transform ${dur}s ${ease}`,
     opacity: state.opacity ?? 1,
-    transform: state.y != null ? `translateY(${state.y}px)` : "translateY(0)",
+    transform: state.y != null
+      ? `translateY(${state.y}px) translateZ(0)`
+      : "translateY(0) translateZ(0)",
+    willChange: "transform, opacity",
   };
 }
 

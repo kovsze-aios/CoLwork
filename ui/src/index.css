@@ -8,6 +8,7 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+/* ── Base ─────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -17,6 +18,24 @@ html, body, #root {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent white flash on resize / first paint */
+  background-color: #09090b;
+}
+
+/* ── GPU compositing foundation ──────────────────────────────
+   Push every composited layer onto its own GPU layer so
+   backdrop-filter, transforms, and opacity changes don't
+   trigger full-tree repaints. */
+.surface-glass,
+.surface-glass-strong,
+.animate-pulse-glow,
+.animate-slide-in,
+.stage-spotlight,
+aside, main,
+button, input, textarea, select {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 * { scrollbar-width: thin; scrollbar-color: #27272a #09090b; }
@@ -29,29 +48,38 @@ html, body, #root {
   0%, 100% { box-shadow: 0 0 4px rgba(10, 102, 194, 0.3); }
   50%      { box-shadow: 0 0 16px rgba(10, 102, 194, 0.7); }
 }
-.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+  will-change: box-shadow;
+}
 
 @keyframes slide-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) translateZ(0); }
+  to   { opacity: 1; transform: translateY(0) translateZ(0); }
 }
-.animate-slide-in { animation: slide-in 0.3s ease-out; }
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+  will-change: transform, opacity;
+}
 
 @keyframes skeleton-shimmer {
   100% { transform: translateX(100%); }
 }
 
 /* Glass surfaces — used by Sidebar, StatusBar, modal-style overlays.
-   Layered on top of the zinc-950 base so backdrop-filter has something to bite. */
+   GPU-composited: translateZ(0) + will-change prevent layout thrashing
+   during scroll / resize even with heavy backdrop-filter. */
 .surface-glass {
   background: rgba(24, 24, 27, 0.55);
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
+  will-change: backdrop-filter, transform;
 }
 .surface-glass-strong {
   background: rgba(9, 9, 11, 0.72);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
+  will-change: backdrop-filter, transform;
 }
 
 /* Soft radial spotlight behind the main stage so the dark theme breathes */
