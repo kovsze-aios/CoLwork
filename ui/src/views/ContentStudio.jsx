@@ -73,7 +73,8 @@ export default function ContentStudio({ setActiveExpert }) {
     setRunning(true);
     setOutput(null);
     setError(null);
-    setActiveExpert?.(mode === "video" ? "oscar" : "paul");
+    // v10.0: Paul handles both posts and short-form video scripts (LinkedIn personal branding).
+    setActiveExpert?.("paul");
     try {
       const res = mode === "video"
         ? await window.colwork.engine.generateVideoScript({ topic, lengthSec: seconds })

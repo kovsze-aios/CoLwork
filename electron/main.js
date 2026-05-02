@@ -262,7 +262,7 @@ ipcMain.handle("engine.health", async () => {
     memory: { totalActions: (memory.actions || []).length },
     recentActivity: recent,
     usage,
-    version: "9.2.0",
+    version: "10.0.0",
     board: { active: 6 },
   };
 });
@@ -333,6 +333,85 @@ ipcMain.handle("engine.saveEnv", async (_e, { content }) => {
 
 // ── Content Studio: posts, scripts, publication archive ────────────────────
 const PUB_DIR = path.join(__dirname, "..", "data", "publications");
+
+// Maps an action.type → which view it belongs to in the Activity Log.
+// Anything not listed falls into "other" and is hidden from the log.
+const JOB_ACTION_TYPES = new Set([
+  "job_apply",
+  "job_apply_queued",
+  "board_pipeline_complete",
+  "board_feynman",
+  "board_seed",
+  "audit",
+]);
+const PROFILE_ACTION_TYPES = new Set([
+  "profile_optimize",
+  "profile_optimize_queued",
+  "board_optimize_complete",
+  "board_feynman_optimize",
+  "board_seed_optimize",
+  "visual_audit",
+]);
+const CONTENT_ACTION_TYPES = new Set([
+  "post_published",
+  "video_script_generated",
+  "post_generated",
+  "aggregate_post",
+]);
+
+function categorizeAction(type) {
+  if (JOB_ACTION_TYPES.has(type)) return "job";
+  if (PROFILE_ACTION_TYPES.has(type)) return "profile";
+  if (CONTENT_ACTION_TYPES.has(type)) return "content";
+  return null;
+}
+
+ipcMain.handle("engine.activityFeed", () => {
+  const eng = loadEngine();
+  if (eng.error) return { ok: false, error: eng.error };
+  try {
+    // Memory log → categorized actions
+    const memory = (() => { try { return eng.memory.loadMemory(); } catch { return { actions: [] }; } })();
+    const actions = (memory.actions || [])
+      .map((a) => ({
+        ...a,
+        category: categorizeAction(a.type),
+      }))
+      .filter((a) => a.category)
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+
+    // Publications archive → content events (synthetic, since not always in memory)
+    let pubs = [];
+    if (fs.existsSync(PUB_DIR)) {
+      pubs = fs.readdirSync(PUB_DIR)
+        .filter((f) => /\.(md|pdf|txt)$/i.test(f))
+        .map((f) => {
+          const stat = fs.statSync(path.join(PUB_DIR, f));
+          return {
+            type: "publication",
+            timestamp: stat.mtime.toISOString(),
+            payload: { filename: f, sizeBytes: stat.size, ext: path.extname(f).slice(1).toLowerCase() },
+            category: "content",
+          };
+        });
+    }
+
+    const all = [...actions, ...pubs]
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
+      .slice(0, 200);
+
+    const counts = {
+      jobs: actions.filter((a) => a.category === "job").length,
+      profile: actions.filter((a) => a.category === "profile").length,
+      content: actions.filter((a) => a.category === "content").length + pubs.length,
+      total: all.length,
+    };
+
+    return { ok: true, items: all, counts };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 ipcMain.handle("engine.listPublications", () => {
   try {

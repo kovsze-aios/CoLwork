@@ -4,7 +4,7 @@
 
 **An open-source autonomous career engine — Mixture of Experts × RAG × Native Desktop UI.**
 
-`Job Hunter` ▸ `Research Lab` ▸ `Integrated Terminal` — all running locally on your machine.
+`Job Hunter` ▸ `Profile Optimizer` ▸ `Content Studio` ▸ `Activity Log` ▸ `Integrated Terminal` — all running locally on your machine.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -32,25 +32,24 @@ Existing "AI career tools" are either browser extensions that scrape behind your
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │  Electron Shell  (frameless window · custom title bar · IPC)   │
-├──────────────┬─────────────────────────────────────────────────┤
-│   React UI   │         CoLwork Engine (Node.js)                │
-│  ───────────  │  ──────────────────────────────────────────────  │
-│  • Dashboard  │  Mixture of Experts (MoE)                       │
-│  • Job Hunter │   ├─ Sherlock  → Company OSINT (Playwright)     │
-│  • Research  │   ├─ Feynman   → CV scoring + simplification     │
-│    Lab       │   ├─ Seed      → Hook + outreach copy            │
-│  • Terminal  │   ├─ Paul      → Visual brand audit              │
-│    (xterm)   │   ├─ Oscar     → Tone & polish                   │
-│              │   └─ Aristotle → Profile re-architect            │
-│              │                                                  │
-│              │  RAG Engine                                      │
-│              │   ├─ data/resume.md  (your story)                │
-│              │   ├─ data/memory.json (action log)               │
-│              │   └─ data/nauka/      (what you've learned)      │
-│              │                                                  │
-│              │  Orchestration                                   │
-│              │   └─ n8n Cloud workflows (data/n8n_workflows/)   │
-└──────────────┴─────────────────────────────────────────────────┘
+├──────────────────┬─────────────────────────────────────────────┤
+│    React UI      │       CoLwork Engine (Node.js)              │
+│   ─────────────   │  ─────────────────────────────────────────   │
+│ • Job Hunter      │  Mixture of Experts (v10.0)                 │
+│ • Profile         │   ├─ Sherlock  → Company Analyzer           │
+│   Optimizer       │   ├─ Feynman   → Resume Tailor              │
+│ • Content Studio  │   ├─ Seed      → Outreach Specialist        │
+│ • Activity Log    │   ├─ Paul      → Post Writer                │
+│ • Terminal (xterm)│   └─ Aristotle → Profile Auditor            │
+│                   │                                             │
+│                   │  RAG Engine                                 │
+│                   │   ├─ data/resume.md  (your story)           │
+│                   │   ├─ data/memory.json (action log)          │
+│                   │   └─ data/nauka/      (your notes)          │
+│                   │                                             │
+│                   │  Orchestration                              │
+│                   │   └─ n8n Cloud workflows                    │
+└──────────────────┴─────────────────────────────────────────────┘
                             │
                             ▼
                 ┌───────────────────────┐
@@ -62,14 +61,13 @@ Existing "AI career tools" are either browser extensions that scrape behind your
 
 Each "expert" is a small JavaScript module under [`src/experts/`](src/experts/) with a single responsibility. They run **locally and for free** — they prepare the LLM prompt, score outputs, and route between stages. Only the synthesizing call goes over the network.
 
-| Expert | File | Responsibility |
+| Expert | File | Responsibility (v10.0) |
 |---|---|---|
-| **Sherlock** | `src/experts/sherlock.js` | Scrapes the company page, extracts culture signals, pain points, tech stack. |
-| **Feynman** | `src/experts/feynman.js` | Scores a CV against a job description; collapses jargon into a one-liner. |
-| **Seed** | `src/experts/seed.js` | Crafts the cold-outreach hook + icebreaker. |
-| **Paul** | `src/experts/paul.js` | Visual / brand-consistency auditor (uses Playwright screenshots). |
-| **Oscar** | `src/experts/oscar.js` | Polishes tone, removes filler, enforces voice. |
-| **Aristotle** | `src/experts/aristotle.js` | Re-architects headline / About / skills from a goal. |
+| **Sherlock** | `src/experts/sherlock.js` | **Company Analyzer** — parses the JD, scrapes the company page, extracts culture signals, pain points, tech stack. |
+| **Feynman** | `src/experts/feynman.js` | **Resume Tailor** — rewrites CV bullets to match the job description; produces the cover letter. |
+| **Seed** | `src/experts/seed.js` | **Outreach Specialist** — drafts hyper-personalized recruiter emails, LinkedIn connection requests, and InMails. |
+| **Paul** | `src/experts/paul.js` | **Post Writer** — LinkedIn thought-leadership posts and short video scripts for personal branding. |
+| **Aristotle** | `src/experts/aristotle.js` | **Profile Auditor** — compares your current LinkedIn against market demand for a target role; rebuilds headline/About/skills. |
 | **Board** | `src/experts/board.js` | Pipeline conductor — runs the experts in order, hands off to n8n. |
 
 ### RAG Engine
@@ -97,7 +95,7 @@ Bring your own n8n instance (self-hosted or Cloud), point `N8N_BASE_URL` and `N8
 
 - **Node.js 22+** ([download](https://nodejs.org))
 - A **DeepSeek API key** ([platform.deepseek.com](https://platform.deepseek.com)) — required.
-- (Optional) An **n8n instance** with public-API access — required for the Job Hunter / Research Lab one-call flows. Without it, the same logic runs locally via the MoE board.
+- (Optional) An **n8n instance** with public-API access — required for the Job Hunter / Profile Optimizer one-call flows. Without it, the same logic runs locally via the MoE board.
 - (Optional) Google Sheets/Docs IDs if you want syncing.
 
 ### 1. Clone and install

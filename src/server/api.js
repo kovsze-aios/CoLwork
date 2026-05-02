@@ -174,10 +174,26 @@ app.post("/api/content/post", async (req, res) => {
 });
 
 app.post("/api/content/video-script", async (req, res) => {
-  const { topic } = req.body;
-  const { generateShortScript } = require("../experts/oscar");
-  const script = await generateShortScript({ topic });
-  res.json({ ok: true, ...script });
+  const { topic, lengthSec } = req.body;
+  const { chat } = require("../ai");
+  const seconds = Math.max(15, Math.min(180, Number(lengthSec) || 60));
+  try {
+    const script = await chat({
+      system: "Jesteś scenarzystą krótkich form wideo (LinkedIn / Reels) dla osób budujących markę osobistą.",
+      user: [
+        `Temat: ${topic}`,
+        `Długość docelowa: ${seconds}s wideo (≈${Math.round(seconds * 2.5)} słów).`,
+        "Format: HOOK (3 sek) → punkty kluczowe (numerowane) → CTA.",
+        "Konkretne liczby. Krótkie zdania. Polski. Bez emoji. Tylko skrypt.",
+      ].join("\n"),
+      label: "video-script",
+      maxTokens: 700,
+      temperature: 0.7,
+    });
+    res.json({ ok: true, script, seconds });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ── Publications ─────────────────────────────────────────────────────────────

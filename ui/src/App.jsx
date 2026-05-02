@@ -7,16 +7,17 @@ import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import OnboardingModal from "./components/OnboardingModal";
-import Dashboard from "./views/Dashboard";
 import JobHunter from "./views/JobHunter";
-import ResearchLab from "./views/ResearchLab";
+import ProfileOptimizer from "./views/ProfileOptimizer";
 import ContentStudio from "./views/ContentStudio";
+import ActivityLog from "./views/ActivityLog";
 import TerminalView from "./views/TerminalView";
 
 const ipc = typeof window !== "undefined" ? window.colwork : null;
 
 export default function App() {
-  const [view, setView] = useState("dashboard");
+  // v10.0 — Activity Log is the landing route (replaces the old Dashboard).
+  const [view, setView] = useState("activity");
   const [health, setHealth] = useState(null);
   const [activeExpert, setActiveExpert] = useState(null);
   const [termOpen, setTermOpen] = useState(false);
@@ -69,7 +70,8 @@ export default function App() {
         setTermOpen((v) => !v);
         return;
       }
-      const navMap = { 1: "dashboard", 2: "jobs", 3: "research", 4: "content", 5: "terminal" };
+      // v10.0 nav order: Job Hunter, Profile, Content, Activity, Terminal
+      const navMap = { 1: "jobs", 2: "profile", 3: "content", 4: "activity", 5: "terminal" };
       if (navMap[e.key]) {
         e.preventDefault();
         setView(navMap[e.key]);
@@ -81,13 +83,13 @@ export default function App() {
 
   const renderView = () => {
     switch (view) {
-      case "dashboard": return <Dashboard health={health} />;
       case "jobs": return <JobHunter setActiveExpert={setActiveExpert} />;
-      case "research": return <ResearchLab setActiveExpert={setActiveExpert} />;
+      case "profile": return <ProfileOptimizer setActiveExpert={setActiveExpert} />;
       case "content": return <ContentStudio setActiveExpert={setActiveExpert} />;
+      case "activity": return <ActivityLog />;
       case "terminal": return <TerminalView />;
       case "settings": return <SettingsPlaceholder />;
-      default: return <Dashboard health={health} />;
+      default: return <ActivityLog />;
     }
   };
 

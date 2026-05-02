@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld("colwork", {
     // Setup & .env management
     getSetupStatus: () => ipcRenderer.invoke("engine.getSetupStatus"),
     saveEnv: (content) => ipcRenderer.invoke("engine.saveEnv", { content }),
+    // Activity Log (v10.0)
+    activityFeed: () => ipcRenderer.invoke("engine.activityFeed"),
   },
 
   // ── PTY (terminal) ───────────────────────────────────────

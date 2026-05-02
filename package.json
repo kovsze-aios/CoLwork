@@ -1,6 +1,6 @@
 {
   "name": "colwork",
-  "version": "9.2.0",
+  "version": "10.0.0",
   "description": "CoLwork — The Open-Source Autonomous Career Engine. Mixture-of-Experts AI agents + RAG Research Lab + n8n Cloud orchestration in a native desktop app.",
   "main": "electron/main.js",
   "homepage": "https://github.com/kovsze-aios/Colwork",

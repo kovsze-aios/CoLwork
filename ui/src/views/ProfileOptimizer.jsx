@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { FlaskConical, Sparkles, TrendingUp, TrendingDown, Loader2, AlertCircle, Hash, Lightbulb } from "lucide-react";
+import { UserCheck, Sparkles, TrendingUp, TrendingDown, Loader2, AlertCircle, Hash, Lightbulb } from "lucide-react";
 
-export default function ResearchLab({ setActiveExpert }) {
+export default function ProfileOptimizer({ setActiveExpert }) {
   const [form, setForm] = useState({
     currentHeadline: "",
     currentAbout: "",
@@ -69,10 +69,10 @@ export default function ResearchLab({ setActiveExpert }) {
     <div className="p-8 space-y-6 animate-slide-in max-w-[1400px]">
       <div>
         <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-          <FlaskConical size={22} strokeWidth={1.7} className="text-linkedin-light" />
-          Research Lab
+          <UserCheck size={22} strokeWidth={1.7} className="text-linkedin-light" />
+          Profile Optimizer
         </h2>
-        <p className="text-sm text-zinc-500 mt-1">RAG-powered LinkedIn optimizer — single-call rebuild of headline, About, skills, and content angles.</p>
+        <p className="text-sm text-zinc-500 mt-1">Aristotle audits your current profile against a target role — rebuilds headline, About, skills, and content angles in one call.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -190,7 +190,7 @@ export default function ResearchLab({ setActiveExpert }) {
           ) : (
             !error && (
               <div className="bg-zinc-900/60 border border-zinc-800 border-dashed rounded-xl p-12 text-center">
-                <FlaskConical size={32} className="text-zinc-700 mx-auto mb-3" strokeWidth={1.5} />
+                <UserCheck size={32} className="text-zinc-700 mx-auto mb-3" strokeWidth={1.5} />
                 <p className="text-sm text-zinc-500">Your optimized profile will appear here.</p>
                 <p className="text-xs text-zinc-600 mt-1 font-mono">~$0.0008 per run</p>
               </div>
