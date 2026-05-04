@@ -162,28 +162,40 @@ DOKUMENTY ŹRÓDŁOWE (JEDYNE DOZWOLONE ŹRÓDŁA):
 ${dossier}
 
 ═══════════════════════
-ZASADY CYTATÓW (EXACT CITATION):
+ZASADY CYTATÓW — POLSKIE NORMY AKADEMICKIE (APA 7th / Harvard):
 ═══════════════════════
 
-1. Po KAŻDYM zdaniu zawierającym fakt z dokumentu wstaw ZNAK CYTATU:
-   Format: (Autor, Rok — patrz: NAZWA_PLIKU)
-   Przykład: "Firmy odnotowały 42% wzrost konwersji (Jaworski & Wolska, 2025 — patrz: test_badanie.txt)."
+1. Po KAŻDYM zdaniu zawierającym fakt z dokumentu wstaw CYTAT W TEKŚCIE:
+   APA: (Nazwisko, Rok, s. X) — np. „(Kowalski, 2024, s. 42)”
+   Harvard: (Nazwisko, Rok: strona) — np. „(Kowalski, 2024: 42)”
+   Jeśli autor nieznany: („Tytuł dokumentu”, Rok)
+   Jeśli rok nieznany: (Nazwisko, b.d.)
+   Jeśli oba nieznane: (Źródło X: nazwa_pliku)
 
-2. Jeśli cytujesz konkretną wartość liczbową, MUSISZ podać źródło.
-   Np.: "Skrócenie czasu odpowiedzi z 4.2h do 6.3min (Źródło A: test_badanie.txt)."
+2. Cytując konkretną wartość liczbową, MUSISZ podać źródło z dokładną stroną/akapitem.
+   Np.: „Skrócenie czasu odpowiedzi z 4.2h do 6.3min (Źródło A: test_badanie.txt, akapit 3).”
 
-3. Jeśli dokument NIE zawiera nazwy autora ani roku:
-   Użyj: (Źródło X: nazwa_pliku) jako cytatu.
+3. ZAKAZ HALUCYNACJI BIBLIOGRAFICZNYCH:
+   NIGDY nie wymyślaj nazwisk autorów, tytułów czasopism, numerów DOI, ISBN, dat publikacji.
+   Jeśli dokument źródłowy nie zawiera pełnych danych bibliograficznych — odnotuj to.
+   Używaj TYLKO danych faktycznie obecnych w dostarczonych plikach.
 
 4. Jeśli temat wymaga informacji spoza dokumentów:
    Napisz: "[Brak danych w materiale źródłowym — wymagane dodatkowe badanie.]"
 
-5. Na końcu artykułu utwórz sekcję "BIBLIOGRAFIA" zawierającą WSZYSTKIE użyte źródła:
-   - Źródło A: nazwa_pliku (format oryginalnego dokumentu)
-   - Źródło B: nazwa_pliku (format oryginalnego dokumentu)
+5. Na końcu artykułu utwórz sekcję "BIBLIOGRAFIA" zgodną z wybranym stylem cytowań:
+   APA: Nazwisko, I. (Rok). Tytuł dokumentu. Źródło.
+   Harvard: Nazwisko, I. (Rok) Tytuł dokumentu, Źródło.
+   PN-ISO 690: NAZWISKO, Imię. Tytuł dokumentu. Źródło, Rok.
+   Dla każdego źródła podaj TYLKO dane obecne w dokumencie.
+   Pola nieobecne w źródle oznacz jako: [brak danych]
+
+6. NIGDY nie cytuj prac, które nie znajdują się w dostarczonych dokumentach.
+   NIGDY nie powołuj się na „powszechnie znane” badania bez wskazania konkretnego źródła.
+   NIGDY nie używaj placeholderów typu „[TUTAJ WSTAW CYTAT]” w finalnym tekście.
 
 TON: Profesjonalny, merytoryczny, rygorystyczny naukowo.
-JĘZYK: Polski.
+JĘZYK: Polski (z angielskim abstraktem jeśli format=academic).
 SŁOWA DOCELOWE: ~${targetWords}
 
 WYgeneruj PEŁNY artykuł. Zero halucynacji. Tylko to co w dokumentach.`;
@@ -194,7 +206,7 @@ WYgeneruj PEŁNY artykuł. Zero halucynacji. Tylko to co w dokumentach.`;
       messages: [
         {
           role: "system",
-          content: "Jesteś Aristotle — rygorystyczny naukowiec CoLwork w trybie STRICT EXTRACTION. Używasz TYLKO informacji z dostarczonych dokumentów. Nigdy nie zmyślasz. Każdy fakt cytujesz znacznikiem źródła. Odpowiadasz TYLKO treścią artykułu.",
+          content: "Jesteś Aristotle — rygorystyczny naukowiec CoLwork w trybie STRICT EXTRACTION. Używasz TYLKO informacji z dostarczonych dokumentów. Nigdy nie zmyślasz nazwisk, tytułów badań, dat, numerów stron ani żadnych danych bibliograficznych. Każdy fakt cytujesz znacznikiem źródła zgodnie z polskimi normami akademickimi (APA 7th ed. lub Harvard). Cytowania w tekście: (Nazwisko, Rok, s. X) dla APA lub (Nazwisko, Rok: strona) dla Harvard. W bibliografii podajesz pełne dane tylko jeśli występują w dokumencie źródłowym — NIGDY nie uzupełniasz brakujących pól. Jeśli w dokumencie brak autora: („Tytuł dokumentu”, Rok). Jeśli brak roku: (Nazwisko, b.d.). Jeśli brak obu: (Źródło X: nazwa_pliku). Odpowiadasz TYLKO treścią artykułu.",
         },
         { role: "user", content: prompt },
       ],
@@ -291,10 +303,12 @@ Słowa docelowe: ~${opts.targetWords || 2000}
 Dane z researchu (Sherlock):
 ${sources || "Brak — użyj ogólnej wiedzy."}
 
-ZASADY ANTY-HALUCYNACYJNE:
-1. NIE zmyślaj nazwisk, tytułów badań, konkretnych liczb.
-2. Zamiast fake'owych cytatów: [TUTAJ WSTAW CYTAT Z BADANIA O <temat>]
-3. Zamiast fake'owych metryk: [INSERT REAL METRICS FROM <źródło>]
+ZASADY ANTY-HALUCYNACYJNE (POLSKIE NORMY AKADEMICKIE):
+1. NIGDY nie zmyślaj nazwisk, tytułów badań, konkretnych liczb, dat, numerów DOI/ISBN.
+2. Jeśli brakuje danych: napisz „[Brak danych w materiale źródłowym — wymagane dodatkowe badanie.]”
+3. Cytuj zgodnie z APA 7th ed.: (Nazwisko, Rok, s. X) lub Harvard: (Nazwisko, Rok: strona).
+4. Jeśli autor nieznany: („Tytuł dokumentu”, Rok). Jeśli rok nieznany: (Nazwisko, b.d.).
+5. W bibliografii podawaj TYLKO dane faktycznie obecne w źródłach.
 
 Wygeneruj PEŁNY artykuł z ## nagłówkami sekcji.`;
 

@@ -10,8 +10,10 @@ import {
   AlertCircle,
   Link2,
   ClipboardPaste,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "../lib/cn";
+import DiffReview from "../components/DiffReview";
 
 /**
  * v10.0 — Job Hunter
@@ -63,6 +65,8 @@ export default function JobHunter({ setActiveExpert }) {
   const [error, setError] = useState(null);
   const [stage, setStage] = useState(null);
   const [inputMode, setInputMode] = useState("url"); // "url" | "paste"
+  const [approved, setApproved] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   const canSubmit = inputMode === "url"
     ? !!form.jobUrl.trim()
@@ -73,6 +77,7 @@ export default function JobHunter({ setActiveExpert }) {
     setRunning(true);
     setResult(null);
     setError(null);
+    setApproved(false);
 
     // Walk the 3 named stages while the n8n call is in flight.
     // Backend execution is parallel-ish; the visible pace is purely UX.
@@ -127,11 +132,11 @@ export default function JobHunter({ setActiveExpert }) {
     <div className="p-8 space-y-6 max-w-[1400px]">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Briefcase size={22} strokeWidth={1.7} className="text-linkedin-light" />
-            Job Hunter
+          <h2 className="text-3xl font-semibold tracking-tight leading-none flex items-center gap-3">
+            <Briefcase size={26} strokeWidth={1.6} className="text-linkedin-light" />
+            <span className="text-grad-heading">Job Hunter</span>
           </h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-500 mt-2 tracking-wide">
             Paste a job → tailored CV + cover letter + recruiter email.
             <span className="text-zinc-600"> ~$0.001/run.</span>
           </p>
@@ -140,7 +145,7 @@ export default function JobHunter({ setActiveExpert }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Input form ───────────────────────────────────────────── */}
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-4 backdrop-blur-sm">
+        <div className="bento-card rounded-2xl p-5 space-y-4 shadow-inner">
           {/* URL ↔ Paste-JD mode toggle */}
           <div className="flex gap-1 p-1 bg-zinc-950 rounded-lg w-fit">
             {[
@@ -212,7 +217,13 @@ export default function JobHunter({ setActiveExpert }) {
           <button
             onClick={submit}
             disabled={running || !canSubmit}
-            className="w-full bg-linkedin hover:bg-linkedin-dark disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-linkedin/10"
+            className={cn(
+              "w-full text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2",
+              "shadow-lg shadow-linkedin/20",
+              !running && canSubmit
+                ? "btn-premium bg-linkedin hover:bg-linkedin-dark"
+                : "bg-zinc-800 text-zinc-600 cursor-not-allowed",
+            )}
           >
             {running ? (
               <><Loader2 size={16} className="animate-spin" /> Running pipeline…</>
@@ -224,8 +235,8 @@ export default function JobHunter({ setActiveExpert }) {
 
         {/* ── Pipeline + Result ───────────────────────────────────── */}
         <div className="space-y-4">
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 backdrop-blur-sm">
-            <h3 className="text-sm font-semibold text-zinc-200 mb-4">Pipeline</h3>
+          <div className="bento-card rounded-2xl p-5 shadow-inner">
+            <h3 className="text-sm font-semibold text-zinc-200 mb-4 tracking-tight">Pipeline</h3>
             <div className="space-y-2">
               {PIPELINE.map((step, idx) => {
                 const activeIdx = PIPELINE.findIndex((s) => s.key === stage);
@@ -233,48 +244,21 @@ export default function JobHunter({ setActiveExpert }) {
                 const isDone = !running && (result || error)
                   ? !error
                   : (activeIdx >= 0 && idx < activeIdx);
-                const color = isActive
-                  ? "text-linkedin-light"
-                  : isDone
-                  ? "text-green-400"
-                  : "text-zinc-500";
                 return (
-                  <div
+                  <PipelineStage
                     key={step.key}
-                    className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border transition-colors",
-                      isActive
-                        ? "bg-linkedin/5 border-linkedin/40"
-                        : isDone
-                        ? "bg-green-500/5 border-green-500/20"
-                        : "bg-zinc-950/60 border-zinc-800/60",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "shrink-0 w-7 h-7 rounded-full grid place-items-center text-[11px] font-mono font-bold border-2",
-                        isActive
-                          ? "border-linkedin-light text-linkedin-light bg-linkedin/10 animate-pulse-glow"
-                          : isDone
-                          ? "border-green-400 text-green-400 bg-green-500/10"
-                          : "border-zinc-700 text-zinc-600",
-                      )}
-                    >
-                      {isDone && !isActive ? <CheckCircle2 size={14} /> : idx + 1}
-                    </span>
-                    <div className="flex-1">
-                      <p className={cn("text-sm font-medium", color)}>{step.name}</p>
-                      <p className="text-[11px] text-zinc-500 font-mono">{step.desc}</p>
-                    </div>
-                    {isActive && <Loader2 size={14} className="animate-spin text-linkedin-light" />}
-                  </div>
+                    step={step}
+                    idx={idx}
+                    isActive={isActive}
+                    isDone={isDone}
+                  />
                 );
               })}
             </div>
           </div>
 
           {error && (
-            <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl flex items-start gap-3">
+            <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-2xl flex items-start gap-3 backdrop-blur-md">
               <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-red-300">Generation failed</p>
@@ -284,67 +268,214 @@ export default function JobHunter({ setActiveExpert }) {
           )}
 
           {result && (
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-3 animate-slide-in backdrop-blur-sm">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-green-400 flex items-center gap-2">
-                  <Award size={16} /> Application package ready
-                </h3>
-                <span className="text-xs font-mono text-zinc-500">
-                  tokens: {result.usage?.promptTokens ?? 0}↑ / {result.usage?.completionTokens ?? 0}↓
-                </span>
-              </div>
+            <div className="space-y-3">
+              {!approved ? (
+                <>
+                  {/* Human-in-the-Loop: Review Diff before applying */}
+                  <DiffReview
+                    currentLabel="Current (Blank / Generic)"
+                    proposedLabel="AI-Generated Application"
+                    diffFields={[
+                      { label: "Cover Letter", before: "(no cover letter yet)", after: result.coverLetter || "" },
+                      ...(result.emailDraft?.body ? [{ label: "Email Body", before: "(no email draft)", after: result.emailDraft.body }] : []),
+                    ]}
+                    warning="AI-generated job application content requires your explicit review and approval. It will NOT be auto-submitted."
+                    onApprove={async () => {
+                      setApplying(true);
+                      await new Promise((r) => setTimeout(r, 600));
+                      setApproved(true);
+                      setApplying(false);
+                    }}
+                    onReject={() => {
+                      setResult(null);
+                      setError(null);
+                    }}
+                    loading={applying}
+                  />
 
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase">Match</p>
-                  <p className="text-2xl font-bold text-linkedin-light tabular-nums">{result.matchScore ?? "—"}</p>
-                </div>
-                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase">CV</p>
-                  <p className="text-2xl font-bold text-white tabular-nums">{(result.cv || "").length}</p>
-                  <p className="text-[10px] text-zinc-600 font-mono">chars</p>
-                </div>
-                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase">Letter</p>
-                  <p className="text-2xl font-bold text-white tabular-nums">{(result.coverLetter || "").length}</p>
-                  <p className="text-[10px] text-zinc-600 font-mono">chars</p>
-                </div>
-              </div>
+                  {/* Stats preview (informational only — visible during review) */}
+                  <div className="bento-card rounded-2xl p-4 shadow-inner">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <p className="text-[10px] text-zinc-500 font-mono uppercase">Match</p>
+                        <p className="text-2xl font-bold text-linkedin-light tabular-nums">{result.matchScore ?? "—"}</p>
+                      </div>
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <p className="text-[10px] text-zinc-500 font-mono uppercase">CV</p>
+                        <p className="text-2xl font-bold text-white tabular-nums">{(result.cv || "").length}</p>
+                        <p className="text-[10px] text-zinc-600 font-mono">chars</p>
+                      </div>
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <p className="text-[10px] text-zinc-500 font-mono uppercase">Letter</p>
+                        <p className="text-2xl font-bold text-white tabular-nums">{(result.coverLetter || "").length}</p>
+                        <p className="text-[10px] text-zinc-600 font-mono">chars</p>
+                      </div>
+                    </div>
+                    {result.keyAlignment?.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-[10px] text-zinc-500 font-mono uppercase mb-1">Key Alignment</p>
+                        <ul className="space-y-1">
+                          {result.keyAlignment.slice(0, 5).map((k, i) => (
+                            <li key={i} className="text-xs text-zinc-300 flex items-start gap-2">
+                              <span className="text-linkedin-light">▸</span>{k}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* Approved state — application confirmed */
+                <div className="bento-card rounded-2xl p-5 space-y-3 animate-slide-in shadow-inner border border-green-500/30 ring-1 ring-green-500/10">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-green-400 flex items-center gap-2">
+                      <ShieldCheck size={16} /> Application Approved &amp; Ready
+                    </h3>
+                    <span className="text-xs font-mono text-zinc-500">
+                      tokens: {result.usage?.promptTokens ?? 0}↑ / {result.usage?.completionTokens ?? 0}↓
+                    </span>
+                  </div>
 
-              {result.keyAlignment?.length > 0 && (
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase mb-1">Key Alignment</p>
-                  <ul className="space-y-1">
-                    {result.keyAlignment.slice(0, 5).map((k, i) => (
-                      <li key={i} className="text-xs text-zinc-300 flex items-start gap-2">
-                        <span className="text-linkedin-light">▸</span>{k}
-                      </li>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase">Match</p>
+                      <p className="text-2xl font-bold text-linkedin-light tabular-nums">{result.matchScore ?? "—"}</p>
+                    </div>
+                    <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase">CV</p>
+                      <p className="text-2xl font-bold text-white tabular-nums">{(result.cv || "").length}</p>
+                      <p className="text-[10px] text-zinc-600 font-mono">chars</p>
+                    </div>
+                    <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase">Letter</p>
+                      <p className="text-2xl font-bold text-white tabular-nums">{(result.coverLetter || "").length}</p>
+                      <p className="text-[10px] text-zinc-600 font-mono">chars</p>
+                    </div>
+                  </div>
+
+                  {result.keyAlignment?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase mb-1">Key Alignment</p>
+                      <ul className="space-y-1">
+                        {result.keyAlignment.slice(0, 5).map((k, i) => (
+                          <li key={i} className="text-xs text-zinc-300 flex items-start gap-2">
+                            <span className="text-linkedin-light">▸</span>{k}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {result.emailDraft && (
+                    <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase mb-1 flex items-center gap-1.5"><Mail size={10} /> Email Draft</p>
+                      <p className="text-xs text-zinc-300"><span className="text-zinc-500">to:</span> {result.emailDraft.to || "—"}</p>
+                      <p className="text-xs text-zinc-300 mt-0.5"><span className="text-zinc-500">subject:</span> {result.emailDraft.subject}</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {(result.emailDraft?.attachments || []).map((att, i) => (
+                      <button
+                        key={i}
+                        onClick={() => saveAttachment(att)}
+                        className="btn-premium text-xs flex items-center gap-1.5 px-3 py-1.5 bg-linkedin/10 hover:bg-linkedin/20 text-linkedin-light border border-linkedin/30 rounded-lg"
+                      >
+                        <FileText size={12} /> Save {att.filename}
+                      </button>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
-
-              {result.emailDraft && (
-                <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase mb-1 flex items-center gap-1.5"><Mail size={10} /> Email Draft</p>
-                  <p className="text-xs text-zinc-300"><span className="text-zinc-500">to:</span> {result.emailDraft.to || "—"}</p>
-                  <p className="text-xs text-zinc-300 mt-0.5"><span className="text-zinc-500">subject:</span> {result.emailDraft.subject}</p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                {(result.emailDraft?.attachments || []).map((att, i) => (
-                  <button
-                    key={i}
-                    onClick={() => saveAttachment(att)}
-                    className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-linkedin/10 hover:bg-linkedin/20 text-linkedin-light border border-linkedin/30 rounded-lg transition"
-                  >
-                    <FileText size={12} /> Save {att.filename}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Pipeline stage card.
+   - Idle:    flat zinc card with a numbered ring.
+   - Active:  expands to show a mock document with a glowing
+              scanning line traversing it. The 7-dot status row
+              pulses and the expert name surfaces.
+   - Done:    green-tinted card + checkmark.
+   Heavily styled in pure CSS (see .scanline / .doc-line in index.css)
+   so we don't reach for framer-motion on the prod-build hot path.
+   ───────────────────────────────────────────────────────────── */
+function PipelineStage({ step, idx, isActive, isDone }) {
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-xl border transition-all duration-300 ease-out",
+        isActive
+          ? "bg-linkedin/[0.06] border-linkedin/40 shadow-[0_0_0_1px_rgba(10,102,194,0.30),0_8px_32px_-12px_rgba(10,102,194,0.45)]"
+          : isDone
+          ? "bg-green-500/[0.04] border-green-500/25"
+          : "bg-zinc-950/60 border-white/5 hover:border-white/10",
+      )}
+    >
+      <div className="flex items-center gap-3 p-3">
+        <span
+          className={cn(
+            "shrink-0 w-7 h-7 rounded-full grid place-items-center text-[11px] font-mono font-bold border-2 transition-all duration-300",
+            isActive
+              ? "border-linkedin-light text-linkedin-light bg-linkedin/15 animate-pulse-glow"
+              : isDone
+              ? "border-green-400 text-green-400 bg-green-500/10"
+              : "border-zinc-700 text-zinc-600",
+          )}
+        >
+          {isDone && !isActive ? <CheckCircle2 size={14} /> : idx + 1}
+        </span>
+
+        <div className="flex-1 min-w-0">
+          <p className={cn(
+            "text-sm font-medium tracking-tight transition-colors duration-300",
+            isActive ? "text-linkedin-light" : isDone ? "text-green-400" : "text-zinc-300",
+          )}>
+            {step.name}
+          </p>
+          <p className="text-[11px] text-zinc-500 font-mono mt-0.5">{step.desc}</p>
+        </div>
+
+        {/* MoE expert name — surfaces only while this stage is active */}
+        {isActive && (
+          <div className="shrink-0 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-linkedin-light">
+            <span className="relative flex w-1.5 h-1.5">
+              <span className="absolute inset-0 rounded-full bg-linkedin-light animate-ping opacity-75" />
+              <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-linkedin-light" />
+            </span>
+            {step.expert}
+          </div>
+        )}
+        {isActive && <Loader2 size={14} className="animate-spin text-linkedin-light shrink-0" />}
+      </div>
+
+      {/* ── Scanning panel — only when active ────────────────── */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out",
+          isActive ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="relative mx-3 mb-3 mt-1 p-3 rounded-lg bg-zinc-950/80 border border-white/5 overflow-hidden">
+            {/* Mock document — six skeleton lines */}
+            <div className="space-y-2">
+              <div className="doc-line w-3/4" />
+              <div className="doc-line w-full" />
+              <div className="doc-line w-5/6" />
+              <div className="doc-line w-2/3" />
+              <div className="doc-line w-full" />
+              <div className="doc-line w-1/2" />
+            </div>
+            {/* The glowing scanning line */}
+            {isActive && <div className="scanline" />}
+          </div>
         </div>
       </div>
     </div>

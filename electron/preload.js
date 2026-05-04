@@ -22,7 +22,6 @@ contextBridge.exposeInMainWorld("colwork", {
     saveDialog: (args) => ipcRenderer.invoke("engine.saveDialog", args),
     // Content Studio
     listPublications: () => ipcRenderer.invoke("engine.listPublications"),
-    readPublication: (filename) => ipcRenderer.invoke("engine.readPublication", { filename }),
     generatePost: (payload) => ipcRenderer.invoke("engine.generatePost", payload),
     generateVideoScript: (payload) => ipcRenderer.invoke("engine.generateVideoScript", payload),
     // Setup & .env management
@@ -30,6 +29,12 @@ contextBridge.exposeInMainWorld("colwork", {
     saveEnv: (content) => ipcRenderer.invoke("engine.saveEnv", { content }),
     // Activity Log (v10.0)
     activityFeed: () => ipcRenderer.invoke("engine.activityFeed"),
+    // Academic Projects (v11.0)
+    academicListProjects: () => ipcRenderer.invoke("academic.listProjects"),
+    academicLoadProject: (projectId) => ipcRenderer.invoke("academic.loadProject", { projectId }),
+    academicSaveProject: (project) => ipcRenderer.invoke("academic.saveProject", { project }),
+    academicCreateProject: (opts) => ipcRenderer.invoke("academic.createProject", { opts }),
+    academicDeleteProject: (projectId) => ipcRenderer.invoke("academic.deleteProject", { projectId }),
   },
 
   // ── PTY (terminal) ───────────────────────────────────────

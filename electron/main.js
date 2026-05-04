@@ -262,7 +262,7 @@ ipcMain.handle("engine.health", async () => {
     memory: { totalActions: (memory.actions || []).length },
     recentActivity: recent,
     usage,
-    version: "10.0.0",
+    version: "11.0.0",
     board: { active: 6 },
   };
 });
@@ -436,19 +436,6 @@ ipcMain.handle("engine.listPublications", () => {
   }
 });
 
-ipcMain.handle("engine.readPublication", (_e, { filename }) => {
-  try {
-    const safe = path.basename(filename || "");
-    const fp = path.join(PUB_DIR, safe);
-    if (!fp.startsWith(PUB_DIR) || !fs.existsSync(fp)) return { ok: false, error: "not_found" };
-    const ext = path.extname(safe).slice(1).toLowerCase();
-    if (ext === "pdf") return { ok: true, ext, binary: true, path: fp };
-    return { ok: true, ext, content: fs.readFileSync(fp, "utf-8") };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
 ipcMain.handle("engine.generatePost", async (_e, { topic, tone, length }) => {
   const eng = loadEngine();
   if (eng.error) return { ok: false, error: eng.error };
@@ -485,7 +472,71 @@ ipcMain.handle("engine.generateVideoScript", async (_e, { topic, lengthSec }) =>
   }
 });
 
-// ── App lifecycle ────────────────────────────────────────────────────────────
+// ── Academic Projects: persistent save/load for long-form writing ───────────
+
+let academicState = null;
+function loadAcademicState() {
+  if (academicState) return academicState;
+  try {
+    academicState = require(path.join(__dirname, "..", "src", "utils", "academic_state"));
+  } catch (e) {
+    console.error("[colwork] academic_state load error:", e.message);
+    academicState = { error: e.message };
+  }
+  return academicState;
+}
+
+ipcMain.handle("academic.listProjects", () => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return { ok: true, projects: st.listProjects() };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.loadProject", (_e, { projectId }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    const project = st.loadProject(projectId);
+    if (!project) return { ok: false, error: "not_found" };
+    return { ok: true, project };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.saveProject", (_e, { project }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.saveProject(project);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.createProject", (_e, { opts }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.createProject(opts || {});
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.deleteProject", (_e, { projectId }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.deleteProject(projectId);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // ── Auto-updater (GitHub OTA) ─────────────────────────────────────────────
 

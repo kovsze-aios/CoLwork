@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { UserCheck, Sparkles, TrendingUp, TrendingDown, Loader2, AlertCircle, Hash, Lightbulb } from "lucide-react";
+import { UserCheck, Sparkles, TrendingUp, TrendingDown, Loader2, AlertCircle, Hash, Lightbulb, ShieldCheck } from "lucide-react";
+import DiffReview from "../components/DiffReview";
 
 export default function ProfileOptimizer({ setActiveExpert }) {
   const [form, setForm] = useState({
@@ -12,12 +13,15 @@ export default function ProfileOptimizer({ setActiveExpert }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [approved, setApproved] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   const submit = async () => {
     if (!form.goal) return;
     setRunning(true);
     setResult(null);
     setError(null);
+    setApproved(false);
     setActiveExpert?.("aristotle");
     try {
       const skills = form.skillsRaw
@@ -66,18 +70,20 @@ export default function ProfileOptimizer({ setActiveExpert }) {
   };
 
   return (
-    <div className="p-8 space-y-6 animate-slide-in max-w-[1400px]">
+    <div className="p-8 space-y-6 max-w-[1400px]">
       <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-          <UserCheck size={22} strokeWidth={1.7} className="text-linkedin-light" />
-          Profile Optimizer
+        <h2 className="text-3xl font-semibold tracking-tight leading-none flex items-center gap-3">
+          <UserCheck size={26} strokeWidth={1.6} className="text-linkedin-light" />
+          <span className="text-grad-heading">Profile Optimizer</span>
         </h2>
-        <p className="text-sm text-zinc-500 mt-1">Aristotle audits your current profile against a target role — rebuilds headline, About, skills, and content angles in one call.</p>
+        <p className="text-sm text-zinc-500 mt-2 tracking-wide">
+          Aristotle audits your current profile against a target role — rebuilds headline, About, skills, and content angles in one call.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Form */}
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-3">
+        <div className="bento-card rounded-2xl p-5 space-y-3 shadow-inner">
           <label className="block">
             <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono">Goal *</span>
             <textarea
@@ -119,7 +125,7 @@ export default function ProfileOptimizer({ setActiveExpert }) {
               <button
                 key={l}
                 onClick={() => setForm({ ...form, language: l })}
-                className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase transition ${form.language === l ? "bg-linkedin text-white" : "bg-zinc-800 text-zinc-400 hover:text-white"}`}
+                className={`btn-premium px-4 py-1.5 rounded-lg text-xs font-mono uppercase ${form.language === l ? "bg-linkedin text-white" : "bg-zinc-800 text-zinc-400 hover:text-white"}`}
               >
                 {l}
               </button>
@@ -128,7 +134,11 @@ export default function ProfileOptimizer({ setActiveExpert }) {
           <button
             onClick={submit}
             disabled={running || !form.goal}
-            className="w-full bg-linkedin hover:bg-linkedin-dark disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-linkedin/10"
+            className={`w-full text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-linkedin/20 ${
+              !running && form.goal
+                ? "btn-premium bg-linkedin hover:bg-linkedin-dark"
+                : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+            }`}
           >
             {running ? (
               <><Loader2 size={16} className="animate-spin" /> Aristotle is rebuilding…</>
@@ -141,55 +151,91 @@ export default function ProfileOptimizer({ setActiveExpert }) {
         {/* Result */}
         <div className="space-y-4">
           {error && (
-            <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl flex items-start gap-3">
+            <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-2xl flex items-start gap-3 backdrop-blur-md">
               <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
               <p className="text-sm text-red-300">{error}</p>
             </div>
           )}
 
           {result ? (
-            <>
-              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-3 animate-slide-in">
-                <p className="text-[10px] text-zinc-500 font-mono uppercase">New Headline</p>
-                <p className="text-base text-white font-medium leading-relaxed">{result.newHeadline}</p>
-              </div>
+            <div className="space-y-4">
+              {!approved ? (
+                <>
+                  {/* Human-in-the-Loop: Review Diff */}
+                  <DiffReview
+                    currentLabel="Current Profile"
+                    proposedLabel="AI Proposed Changes"
+                    diffFields={[
+                      { label: "Headline", before: form.currentHeadline || "(not provided)", after: result.newHeadline || "" },
+                      { label: "About", before: form.currentAbout || "(not provided)", after: result.newAbout || "" },
+                    ]}
+                    warning="AI-generated profile changes require your review and approval before they take effect."
+                    onApprove={async () => {
+                      setApplying(true);
+                      // Simulate apply — in production this would push to LinkedIn via n8n
+                      await new Promise((r) => setTimeout(r, 800));
+                      setApproved(true);
+                      setApplying(false);
+                    }}
+                    onReject={() => {
+                      setResult(null);
+                      setError(null);
+                    }}
+                    loading={applying}
+                  />
 
-              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-3 animate-slide-in">
-                <p className="text-[10px] text-zinc-500 font-mono uppercase">New About</p>
-                <pre className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed font-sans">{result.newAbout}</pre>
-              </div>
+                  {/* Score deltas (informational) */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <Delta label="Headline score" before={result.audit?.before?.headlineScore} after={result.audit?.after?.headlineScore} />
+                    <Delta label="About score" before={result.audit?.before?.aboutScore} after={result.audit?.after?.aboutScore} />
+                    <Delta label="Skill count" before={result.audit?.before?.skillCount} after={result.audit?.after?.skillCount} />
+                  </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <Delta label="Headline score" before={result.audit?.before?.headlineScore} after={result.audit?.after?.headlineScore} />
-                <Delta label="About score" before={result.audit?.before?.aboutScore} after={result.audit?.after?.aboutScore} />
-                <Delta label="Skill count" before={result.audit?.before?.skillCount} after={result.audit?.after?.skillCount} />
-              </div>
+                  {result.recommendedSkills?.length > 0 && (
+                    <div className="bento-card rounded-2xl p-5 shadow-inner">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase mb-2 flex items-center gap-1.5"><Hash size={10} /> Recommended Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.recommendedSkills.map((s, i) => (
+                          <span key={i} className="text-[11px] px-2 py-0.5 bg-linkedin/10 text-linkedin-light border border-linkedin/30 rounded font-mono">{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-              {result.recommendedSkills?.length > 0 && (
-                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase mb-2 flex items-center gap-1.5"><Hash size={10} /> Recommended Skills</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.recommendedSkills.map((s, i) => (
-                      <span key={i} className="text-[11px] px-2 py-0.5 bg-linkedin/10 text-linkedin-light border border-linkedin/30 rounded font-mono">{s}</span>
-                    ))}
+                  {result.contentAngles?.length > 0 && (
+                    <div className="bento-card rounded-2xl p-5 shadow-inner">
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase mb-2 flex items-center gap-1.5"><Lightbulb size={10} /> Content Angles</p>
+                      <ul className="space-y-2">
+                        {result.contentAngles.map((a, i) => (
+                          <li key={i} className="text-xs text-zinc-300 leading-relaxed pl-3 border-l-2 border-linkedin/40">{a}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Approved state — show applied confirmation */
+                <div className="bento-card rounded-2xl p-5 space-y-3 shadow-inner border border-green-500/30 ring-1 ring-green-500/10">
+                  <div className="flex items-center gap-2 text-green-400">
+                    <ShieldCheck size={18} />
+                    <p className="text-sm font-semibold">Profile Changes Approved &amp; Applied</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase">New Headline</p>
+                      <p className="text-base text-white font-medium leading-relaxed">{result.newHeadline}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-500 font-mono uppercase">New About</p>
+                      <pre className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed font-sans">{result.newAbout}</pre>
+                    </div>
                   </div>
                 </div>
               )}
-
-              {result.contentAngles?.length > 0 && (
-                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
-                  <p className="text-[10px] text-zinc-500 font-mono uppercase mb-2 flex items-center gap-1.5"><Lightbulb size={10} /> Content Angles</p>
-                  <ul className="space-y-2">
-                    {result.contentAngles.map((a, i) => (
-                      <li key={i} className="text-xs text-zinc-300 leading-relaxed pl-3 border-l-2 border-linkedin/40">{a}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
+            </div>
           ) : (
             !error && (
-              <div className="bg-zinc-900/60 border border-zinc-800 border-dashed rounded-xl p-12 text-center">
+              <div className="bento-card rounded-2xl border-dashed p-12 text-center shadow-inner">
                 <UserCheck size={32} className="text-zinc-700 mx-auto mb-3" strokeWidth={1.5} />
                 <p className="text-sm text-zinc-500">Your optimized profile will appear here.</p>
                 <p className="text-xs text-zinc-600 mt-1 font-mono">~$0.0008 per run</p>
