@@ -262,7 +262,7 @@ ipcMain.handle("engine.health", async () => {
     memory: { totalActions: (memory.actions || []).length },
     recentActivity: recent,
     usage,
-    version: "9.2.0",
+    version: "11.0.0",
     board: { active: 6 },
   };
 });
@@ -334,6 +334,85 @@ ipcMain.handle("engine.saveEnv", async (_e, { content }) => {
 // ── Content Studio: posts, scripts, publication archive ────────────────────
 const PUB_DIR = path.join(__dirname, "..", "data", "publications");
 
+// Maps an action.type → which view it belongs to in the Activity Log.
+// Anything not listed falls into "other" and is hidden from the log.
+const JOB_ACTION_TYPES = new Set([
+  "job_apply",
+  "job_apply_queued",
+  "board_pipeline_complete",
+  "board_feynman",
+  "board_seed",
+  "audit",
+]);
+const PROFILE_ACTION_TYPES = new Set([
+  "profile_optimize",
+  "profile_optimize_queued",
+  "board_optimize_complete",
+  "board_feynman_optimize",
+  "board_seed_optimize",
+  "visual_audit",
+]);
+const CONTENT_ACTION_TYPES = new Set([
+  "post_published",
+  "video_script_generated",
+  "post_generated",
+  "aggregate_post",
+]);
+
+function categorizeAction(type) {
+  if (JOB_ACTION_TYPES.has(type)) return "job";
+  if (PROFILE_ACTION_TYPES.has(type)) return "profile";
+  if (CONTENT_ACTION_TYPES.has(type)) return "content";
+  return null;
+}
+
+ipcMain.handle("engine.activityFeed", () => {
+  const eng = loadEngine();
+  if (eng.error) return { ok: false, error: eng.error };
+  try {
+    // Memory log → categorized actions
+    const memory = (() => { try { return eng.memory.loadMemory(); } catch { return { actions: [] }; } })();
+    const actions = (memory.actions || [])
+      .map((a) => ({
+        ...a,
+        category: categorizeAction(a.type),
+      }))
+      .filter((a) => a.category)
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+
+    // Publications archive → content events (synthetic, since not always in memory)
+    let pubs = [];
+    if (fs.existsSync(PUB_DIR)) {
+      pubs = fs.readdirSync(PUB_DIR)
+        .filter((f) => /\.(md|pdf|txt)$/i.test(f))
+        .map((f) => {
+          const stat = fs.statSync(path.join(PUB_DIR, f));
+          return {
+            type: "publication",
+            timestamp: stat.mtime.toISOString(),
+            payload: { filename: f, sizeBytes: stat.size, ext: path.extname(f).slice(1).toLowerCase() },
+            category: "content",
+          };
+        });
+    }
+
+    const all = [...actions, ...pubs]
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
+      .slice(0, 200);
+
+    const counts = {
+      jobs: actions.filter((a) => a.category === "job").length,
+      profile: actions.filter((a) => a.category === "profile").length,
+      content: actions.filter((a) => a.category === "content").length + pubs.length,
+      total: all.length,
+    };
+
+    return { ok: true, items: all, counts };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("engine.listPublications", () => {
   try {
     if (!fs.existsSync(PUB_DIR)) return { ok: true, items: [] };
@@ -352,19 +431,6 @@ ipcMain.handle("engine.listPublications", () => {
       })
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
     return { ok: true, items };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle("engine.readPublication", (_e, { filename }) => {
-  try {
-    const safe = path.basename(filename || "");
-    const fp = path.join(PUB_DIR, safe);
-    if (!fp.startsWith(PUB_DIR) || !fs.existsSync(fp)) return { ok: false, error: "not_found" };
-    const ext = path.extname(safe).slice(1).toLowerCase();
-    if (ext === "pdf") return { ok: true, ext, binary: true, path: fp };
-    return { ok: true, ext, content: fs.readFileSync(fp, "utf-8") };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -406,7 +472,71 @@ ipcMain.handle("engine.generateVideoScript", async (_e, { topic, lengthSec }) =>
   }
 });
 
-// ── App lifecycle ────────────────────────────────────────────────────────────
+// ── Academic Projects: persistent save/load for long-form writing ───────────
+
+let academicState = null;
+function loadAcademicState() {
+  if (academicState) return academicState;
+  try {
+    academicState = require(path.join(__dirname, "..", "src", "utils", "academic_state"));
+  } catch (e) {
+    console.error("[colwork] academic_state load error:", e.message);
+    academicState = { error: e.message };
+  }
+  return academicState;
+}
+
+ipcMain.handle("academic.listProjects", () => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return { ok: true, projects: st.listProjects() };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.loadProject", (_e, { projectId }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    const project = st.loadProject(projectId);
+    if (!project) return { ok: false, error: "not_found" };
+    return { ok: true, project };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.saveProject", (_e, { project }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.saveProject(project);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.createProject", (_e, { opts }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.createProject(opts || {});
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("academic.deleteProject", (_e, { projectId }) => {
+  const st = loadAcademicState();
+  if (st.error) return { ok: false, error: st.error };
+  try {
+    return st.deleteProject(projectId);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // ── Auto-updater (GitHub OTA) ─────────────────────────────────────────────
 

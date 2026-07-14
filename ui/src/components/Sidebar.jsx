@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import {
-  LayoutDashboard,
   Briefcase,
-  FlaskConical,
+  UserCheck,
   Sparkles,
+  History,
   Terminal,
   Settings,
   Github,
@@ -16,11 +16,13 @@ import { cn } from "../lib/cn";
 
 const ipc = typeof window !== "undefined" ? window.colwork : null;
 
+// v10.0 navigation — strictly LinkedIn / Job Hunter focus.
+// Dashboard removed (rolled into Activity Log). Research Lab renamed to Profile Optimizer.
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "System health & telemetry" },
-  { id: "jobs", label: "Job Hunter", icon: Briefcase, hint: "Tailored CV + cover letter" },
-  { id: "research", label: "Research Lab", icon: FlaskConical, hint: "RAG-powered profile optimizer" },
-  { id: "content", label: "Content Studio", icon: Sparkles, hint: "Posts, scripts & publication archive" },
+  { id: "jobs", label: "Job Hunter", icon: Briefcase, hint: "Paste a job → tailored CV + cover letter + outreach" },
+  { id: "profile", label: "Profile Optimizer", icon: UserCheck, hint: "Audit & rebuild your LinkedIn for a target role" },
+  { id: "content", label: "Content Studio", icon: Sparkles, hint: "Posts & video scripts for personal branding" },
+  { id: "activity", label: "Activity Log", icon: History, hint: "Applied jobs + generated content, unified" },
   { id: "terminal", label: "Terminal", icon: Terminal, hint: "Native shell" },
 ];
 

@@ -23,7 +23,7 @@ export function TitleBar() {
     >
       <div className="flex items-center gap-3 px-4">
         <LogoWordmark size={20} />
-        <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-600">v8.2 · open source</span>
+        <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-600">v11.0 · open source</span>
       </div>
 
       {ipc ? (

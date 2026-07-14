@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Activity, Cpu, Zap, Wifi, WifiOff, DollarSign } from "lucide-react";
 
+// v10.0 — five experts, all aligned with the LinkedIn / job-hunter mission.
 const EXPERTS = [
-  { id: "sherlock", name: "Sherlock", task: "Company OSINT" },
-  { id: "feynman", name: "Feynman", task: "CV simplification" },
-  { id: "seed", name: "Seed", task: "Icebreaker crafting" },
-  { id: "paul", name: "Paul", task: "Post writing" },
-  { id: "oscar", name: "Oscar", task: "Video script" },
-  { id: "aristotle", name: "Aristotle", task: "Research synthesis" },
+  { id: "sherlock", name: "Sherlock", task: "Analyzing company & job" },
+  { id: "feynman", name: "Feynman", task: "Tailoring resume" },
+  { id: "seed", name: "Seed", task: "Drafting outreach" },
+  { id: "paul", name: "Paul", task: "Writing post" },
+  { id: "aristotle", name: "Aristotle", task: "Auditing profile" },
 ];
 
 /**
